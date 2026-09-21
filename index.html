@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>فروشگاه ظروف</title>
+<meta name="theme-color" content="#4C6B5D">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <button class="cart-btn" id="cartBtn" aria-label="سبد خرید">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 6h15l-1.5 9h-12z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="20" r="1.4" fill="currentColor"/><circle cx="17" cy="20" r="1.4" fill="currentColor"/><path d="M2 3h2.2L6 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+    <span class="cart-count" id="cartCount">0</span>
+  </button>
+  <div class="brand">
+    <span class="brand-mark">ظ</span>
+    <span class="brand-name">فروشگاه ظروف</span>
+  </div>
+</header>
+
+<section class="hero">
+  <h1>ظرف مناسب برای هر سفره‌ای</h1>
+  <p>از ظروف یک‌بارمصرف تا سرویس‌های کامل — انتخاب کنید، سفارش بدهید، تحویل بگیرید.</p>
+</section>
+
+<nav class="filters" id="filters"></nav>
+
+<main class="grid" id="grid"></main>
+
+<div class="cart-overlay" id="cartOverlay"></div>
+<aside class="cart-drawer" id="cartDrawer">
+  <div class="cart-head">
+    <h2>سبد خرید</h2>
+    <button class="icon-btn" id="closeCart" aria-label="بستن">✕</button>
+  </div>
+  <div class="cart-items" id="cartItems"></div>
+  <div class="cart-footer">
+    <div class="cart-total">
+      <span>جمع کل</span>
+      <span id="cartTotal">۰ تومان</span>
+    </div>
+    <button class="checkout-btn" id="checkoutBtn">ثبت سفارش</button>
+    <p class="cart-note">پرداخت آنلاین به‌زودی فعال می‌شود؛ فعلاً سفارش شما ثبت و برای هماهنگی تماس گرفته می‌شود.</p>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
