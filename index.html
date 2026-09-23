@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>فروشگاه ظروف</title>
+<title>ظرف من</title>
 <meta name="theme-color" content="#4C6B5D">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -23,9 +23,28 @@
   </button>
   <div class="brand">
     <span class="brand-mark">ظ</span>
-    <span class="brand-name">فروشگاه ظروف</span>
+    <span class="brand-name">ظرف من</span>
   </div>
+  <button class="city-btn" id="cityBtn">
+    <svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 22s7-7.2 7-12.5A7 7 0 1 0 5 9.5C5 14.8 12 22 12 22Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="9.5" r="2.2" fill="currentColor"/></svg>
+    <span id="cityBtnLabel">انتخاب شهر</span>
+  </button>
 </header>
+
+<!-- مودال انتخاب شهر -->
+<div class="city-overlay" id="cityOverlay"></div>
+<div class="city-modal" id="cityModal">
+  <div class="city-modal-head">
+    <h2>انتخاب شهر</h2>
+    <button class="icon-btn" id="closeCityModal" aria-label="بستن">✕</button>
+  </div>
+  <button class="locate-btn" id="useLocationBtn">
+    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+    استفاده از موقعیت مکانی من (نزدیک‌ترین محصولات)
+  </button>
+  <input type="text" id="citySearch" class="field" placeholder="جستجوی شهر...">
+  <div class="city-list" id="cityList"></div>
+</div>
 
 <section class="hero">
   <h1>ظرف مناسب برای هر سفره‌ای</h1>
@@ -44,17 +63,28 @@
   </div>
   <div class="cart-items" id="cartItems"></div>
   <div class="cart-footer">
+    <input type="tel" id="buyerPhone" class="field" placeholder="شماره تماس شما (برای هماهنگی ارسال)">
+    <input type="text" id="buyerAddress" class="field" placeholder="آدرس تقریبی (اختیاری)">
     <div class="cart-total">
       <span>جمع کل</span>
       <span id="cartTotal">۰ تومان</span>
     </div>
     <button class="checkout-btn" id="checkoutBtn">ثبت سفارش</button>
-    <p class="cart-note">پرداخت آنلاین به‌زودی فعال می‌شود؛ فعلاً سفارش شما ثبت و برای هماهنگی تماس گرفته می‌شود.</p>
+    <p class="cart-note">پرداخت آنلاین به‌زودی فعال می‌شود؛ سفارش شما برای تامین‌کننده نزدیک ارسال و برای هماهنگی با شما تماس گرفته می‌شود.</p>
   </div>
 </aside>
 
 <div class="toast" id="toast"></div>
 
+<footer class="site-footer">
+  <a href="supplier.html">پنل تامین‌کنندگان</a>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="cities.js"></script>
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator) {

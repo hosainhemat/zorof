@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>پنل تامین‌کننده — ظرف من</title>
+<meta name="theme-color" content="#4C6B5D">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="supplier.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a href="index.html" class="icon-btn" aria-label="بازگشت به فروشگاه">→</a>
+  <div class="brand">
+    <span class="brand-mark">ظ</span>
+    <span class="brand-name">پنل تامین‌کننده</span>
+  </div>
+</header>
+
+<!-- ورود / ثبت‌نام -->
+<section id="authSection" class="auth-box">
+  <h1>ورود تامین‌کنندگان</h1>
+  <p class="auth-sub">با ایمیل خود وارد شوید یا اگر تازه‌وارد هستید ثبت‌نام کنید.</p>
+
+  <input id="supplierName" class="field" type="text" placeholder="نام فروشگاه / تامین‌کننده (فقط برای ثبت‌نام)">
+  <input id="supplierPhone" class="field" type="tel" placeholder="شماره تماس (فقط برای ثبت‌نام)">
+  <input id="authEmail" class="field" type="email" placeholder="ایمیل" autocomplete="username">
+  <input id="authPass" class="field" type="password" placeholder="رمز عبور (حداقل ۶ کاراکتر)" autocomplete="current-password">
+
+  <button id="loginBtn" class="primary-btn">ورود</button>
+  <button id="registerBtn" class="secondary-btn">ثبت‌نام تامین‌کننده جدید</button>
+  <p id="authError" class="auth-error"></p>
+</section>
+
+<!-- در انتظار تایید مدیر -->
+<section id="pendingSection" class="auth-box hidden">
+  <h1>در انتظار تایید</h1>
+  <p class="auth-sub">حساب شما ثبت شد. تا زمانی که مدیر فروشگاه حساب شما را تایید نکند، امکان افزودن محصول وجود ندارد. برای پیگیری می‌توانید پیام بفرستید.</p>
+  <div id="pendingMessages" class="messages-thread"></div>
+  <div class="message-input-row">
+    <input id="pendingMsgInput" class="field" type="text" placeholder="پیام به مدیر...">
+    <button id="pendingMsgSend" class="primary-btn small">ارسال</button>
+  </div>
+  <button id="pendingLogoutBtn" class="text-btn">خروج</button>
+</section>
+
+<!-- پنل اصلی (بعد از تایید) -->
+<section id="panelSection" class="panel hidden">
+  <div class="panel-head">
+    <div class="panel-hello">خوش آمدید، <span id="welcomeName"></span></div>
+    <button id="logoutBtn" class="text-btn">خروج</button>
+  </div>
+
+  <nav class="tabs" id="supplierTabs">
+    <button class="tab-btn active" data-tab="orders">سفارش‌ها</button>
+    <button class="tab-btn" data-tab="products">محصولات</button>
+    <button class="tab-btn" data-tab="report">گزارش من</button>
+    <button class="tab-btn" data-tab="messages">پیام با مدیر</button>
+  </nav>
+
+  <!-- تب سفارش‌ها -->
+  <div class="tab-pane" id="tab-orders">
+    <div class="location-box">
+      <select id="supplierCity" class="field"></select>
+      <button type="button" id="getLocationBtn" class="secondary-btn">دریافت موقعیت مکانی دقیق (برای صف سفارش‌ها)</button>
+      <p id="locationStatus" class="location-status"></p>
+    </div>
+    <div id="ordersList" class="my-products"></div>
+  </div>
+
+  <!-- تب محصولات -->
+  <div class="tab-pane hidden" id="tab-products">
+    <h2 class="section-title">افزودن محصول جدید</h2>
+    <form id="productForm" class="product-form">
+      <label class="photo-picker" id="photoPicker">
+        <img id="photoPreview" class="hidden">
+        <span id="photoPickerLabel">افزودن عکس</span>
+        <input type="file" id="photoInput" accept="image/*" capture="environment">
+      </label>
+
+      <input id="pName" class="field" type="text" placeholder="عنوان جنس" required>
+      <textarea id="pDesc" class="field" placeholder="توضیحات" rows="2"></textarea>
+      <input id="pPrice" class="field" type="number" inputmode="numeric" placeholder="قیمت (تومان)" required>
+      <input id="pStock" class="field" type="number" inputmode="numeric" placeholder="موجودی (تعداد)" required>
+      <select id="pCategory" class="field"></select>
+
+      <button type="submit" class="primary-btn" id="submitBtn">افزودن محصول</button>
+      <button type="button" class="text-btn hidden" id="cancelEditBtn">انصراف از ویرایش</button>
+    </form>
+
+    <h2 class="section-title">محصولات من</h2>
+    <div id="myProducts" class="my-products"></div>
+  </div>
+
+  <!-- تب گزارش -->
+  <div class="tab-pane hidden" id="tab-report">
+    <div id="reportBox" class="report-box"></div>
+  </div>
+
+  <!-- تب پیام‌رسانی -->
+  <div class="tab-pane hidden" id="tab-messages">
+    <div id="supplierMessages" class="messages-thread"></div>
+    <div class="message-input-row">
+      <input id="supplierMsgInput" class="field" type="text" placeholder="پیام به مدیر...">
+      <button id="supplierMsgSend" class="primary-btn small">ارسال</button>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="cities.js"></script>
+<script src="supplier.js"></script>
+</body>
+</html>

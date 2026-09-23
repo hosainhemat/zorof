@@ -1,6 +1,6 @@
 {
-  "name": "فروشگاه ظروف",
-  "short_name": "ظروف",
+  "name": "ظرف من",
+  "short_name": "ظرف من",
   "description": "فروش انواع ظروف، از یک‌بارمصرف تا سرویس کامل",
   "start_url": "./index.html",
   "scope": "./",

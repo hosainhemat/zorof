@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>پنل مدیر — ظرف من</title>
+<meta name="theme-color" content="#4C6B5D">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="supplier.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a href="index.html" class="icon-btn" aria-label="بازگشت به فروشگاه">→</a>
+  <div class="brand">
+    <span class="brand-mark">ظ</span>
+    <span class="brand-name">پنل مدیر</span>
+  </div>
+</header>
+
+<!-- ورود -->
+<section id="authSection" class="auth-box">
+  <h1>ورود مدیر</h1>
+  <p class="auth-sub">این صفحه فقط برای صاحب فروشگاه است.</p>
+  <input id="authEmail" class="field" type="email" placeholder="ایمیل" autocomplete="username">
+  <input id="authPass" class="field" type="password" placeholder="رمز عبور" autocomplete="current-password">
+  <button id="loginBtn" class="primary-btn">ورود</button>
+  <p id="authError" class="auth-error"></p>
+</section>
+
+<!-- پنل -->
+<section id="panelSection" class="panel hidden">
+  <div class="panel-head">
+    <div class="panel-hello">خوش آمدید، <span id="welcomeName"></span></div>
+    <button id="logoutBtn" class="text-btn">خروج</button>
+  </div>
+
+  <nav class="tabs" id="adminTabs">
+    <button class="tab-btn active" data-tab="products">تایید محصولات</button>
+    <button class="tab-btn" data-tab="suppliers">تامین‌کنندگان</button>
+    <button class="tab-btn" data-tab="customers">مشتریان</button>
+    <button class="tab-btn" data-tab="orders">سفارش‌ها</button>
+    <button class="tab-btn" data-tab="inventory">موجودی</button>
+    <button class="tab-btn" data-tab="report">گزارش</button>
+    <button class="tab-btn" data-tab="messages">پیام‌رسانی</button>
+  </nav>
+
+  <!-- تایید محصولات -->
+  <div class="tab-pane" id="tab-products">
+    <nav class="filters" id="statusFilters"></nav>
+    <div id="productsList" class="my-products"></div>
+  </div>
+
+  <!-- تامین‌کنندگان -->
+  <div class="tab-pane hidden" id="tab-suppliers">
+    <nav class="filters" id="supplierStatusFilters"></nav>
+    <div id="suppliersList" class="my-products"></div>
+  </div>
+
+  <!-- مشتریان -->
+  <div class="tab-pane hidden" id="tab-customers">
+    <div id="customersList" class="my-products"></div>
+  </div>
+
+  <!-- سفارش‌ها -->
+  <div class="tab-pane hidden" id="tab-orders">
+    <div id="allOrdersList" class="my-products"></div>
+  </div>
+
+  <!-- موجودی -->
+  <div class="tab-pane hidden" id="tab-inventory">
+    <div id="inventoryList" class="my-products"></div>
+  </div>
+
+  <!-- گزارش -->
+  <div class="tab-pane hidden" id="tab-report">
+    <div id="reportBox" class="report-box"></div>
+  </div>
+
+  <!-- پیام‌رسانی -->
+  <div class="tab-pane hidden" id="tab-messages">
+    <select id="messageSupplierSelect" class="field"></select>
+    <div id="adminMessages" class="messages-thread"></div>
+    <div class="message-input-row">
+      <input id="adminMsgInput" class="field" type="text" placeholder="پیام...">
+      <button id="adminMsgSend" class="primary-btn small">ارسال</button>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
