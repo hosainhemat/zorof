@@ -17,68 +17,153 @@
 <body>
 
 <header class="site-header">
-  <button class="cart-btn" id="cartBtn" aria-label="سبد خرید">
-    <svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 6h15l-1.5 9h-12z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="20" r="1.4" fill="currentColor"/><circle cx="17" cy="20" r="1.4" fill="currentColor"/><path d="M2 3h2.2L6 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-    <span class="cart-count" id="cartCount">0</span>
+  <button class="icon-round" id="searchBtn" aria-label="جستجو">
+    <svg viewBox="0 0 24 24" width="19" height="19"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-4.5-4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
   </button>
-  <div class="brand">
-    <span class="brand-mark">ظ</span>
-    <span class="brand-name">ظرف من</span>
-  </div>
-  <button class="city-btn" id="cityBtn">
-    <svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 22s7-7.2 7-12.5A7 7 0 1 0 5 9.5C5 14.8 12 22 12 22Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="9.5" r="2.2" fill="currentColor"/></svg>
-    <span id="cityBtnLabel">انتخاب شهر</span>
+  <div class="brand"><span class="brand-mark">ظ</span><span class="brand-name">ظرف من</span></div>
+  <button class="icon-round" id="menuBtn" aria-label="منو">
+    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
   </button>
 </header>
 
-<!-- مودال انتخاب شهر -->
-<div class="city-overlay" id="cityOverlay"></div>
-<div class="city-modal" id="cityModal">
-  <div class="city-modal-head">
-    <h2>انتخاب شهر</h2>
-    <button class="icon-btn" id="closeCityModal" aria-label="بستن">✕</button>
-  </div>
-  <button class="locate-btn" id="useLocationBtn">
-    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-    استفاده از موقعیت مکانی من (نزدیک‌ترین محصولات)
-  </button>
-  <input type="text" id="citySearch" class="field" placeholder="جستجوی شهر...">
-  <div class="city-list" id="cityList"></div>
+<!-- نوار جستجو -->
+<div class="search-bar hidden" id="searchBar">
+  <input type="text" id="searchInput" class="field" placeholder="جستجوی محصول...">
 </div>
 
-<section class="hero">
-  <h1>ظرف مناسب برای هر سفره‌ای</h1>
-  <p>از ظروف یک‌بارمصرف تا سرویس‌های کامل — انتخاب کنید، سفارش بدهید، تحویل بگیرید.</p>
+<!-- منوی دسته‌بندی (کشویی از راست) -->
+<div class="side-overlay" id="sideOverlay"></div>
+<div class="side-menu" id="sideMenu">
+  <div class="side-menu-head">
+    <h2>دسته‌بندی‌ها</h2>
+    <button class="icon-btn" id="closeSideMenu">✕</button>
+  </div>
+  <div id="sideCategoryList" class="side-category-list"></div>
+  <div class="side-menu-foot">
+    <a href="supplier.html">پنل تامین‌کنندگان</a>
+    <a href="admin.html">پنل مدیر</a>
+  </div>
+</div>
+
+<!-- نوار شگفت‌انگیزها -->
+<section id="featuredSection" class="featured-section hidden">
+  <div class="featured-title">🔥 پیشنهاد شگفت‌انگیز</div>
+  <div class="featured-scroll" id="featuredScroll"></div>
 </section>
+
+<!-- ردیف آیکون دسته‌بندی‌ها -->
+<div class="cat-icons" id="catIcons"></div>
 
 <nav class="filters" id="filters"></nav>
 
 <main class="grid" id="grid"></main>
 
+<!-- نوار پایین -->
+<nav class="bottom-nav">
+  <button class="bn-btn active" data-bn="home">
+    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+    <span>خانه</span>
+  </button>
+  <button class="bn-btn" data-bn="categories">
+    <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+    <span>دسته‌ها</span>
+  </button>
+  <button class="bn-btn" data-bn="cart" id="bottomCartBtn">
+    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6h15l-1.5 9h-12z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="20" r="1.4" fill="currentColor"/><circle cx="17" cy="20" r="1.4" fill="currentColor"/></svg>
+    <span id="bottomCartCount">سبد خرید</span>
+  </button>
+  <button class="bn-btn" data-bn="account">
+    <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c1.5-4 4.5-6 7-6s5.5 2 7 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+    <span>حساب من</span>
+  </button>
+</nav>
+
+<!-- مودال انتخاب شهر -->
+<div class="city-overlay" id="cityOverlay"></div>
+<div class="city-modal" id="cityModal">
+  <div class="city-modal-head"><h2>انتخاب شهر</h2><button class="icon-btn" id="closeCityModal">✕</button></div>
+  <button class="locate-btn" id="useLocationBtn">📍 استفاده از موقعیت مکانی من (نزدیک‌ترین محصولات)</button>
+  <input type="text" id="citySearch" class="field" placeholder="جستجوی شهر...">
+  <div class="city-list" id="cityList"></div>
+</div>
+
+<!-- سبد خرید / ویزارد سفارش -->
 <div class="cart-overlay" id="cartOverlay"></div>
 <aside class="cart-drawer" id="cartDrawer">
   <div class="cart-head">
-    <h2>سبد خرید</h2>
-    <button class="icon-btn" id="closeCart" aria-label="بستن">✕</button>
+    <h2 id="cartStepTitle">سبد خرید</h2>
+    <button class="icon-btn" id="closeCart">✕</button>
   </div>
-  <div class="cart-items" id="cartItems"></div>
-  <div class="cart-footer">
-    <input type="tel" id="buyerPhone" class="field" placeholder="شماره تماس شما (برای هماهنگی ارسال)">
-    <input type="text" id="buyerAddress" class="field" placeholder="آدرس تقریبی (اختیاری)">
-    <div class="cart-total">
-      <span>جمع کل</span>
-      <span id="cartTotal">۰ تومان</span>
+
+  <!-- مرحله ۱: سبد -->
+  <div id="stepCart" class="cart-step">
+    <div class="cart-items" id="cartItems"></div>
+    <div class="cart-footer">
+      <button class="city-btn small" id="cityBtn"><span id="cityBtnLabel">انتخاب شهر</span></button>
+      <div class="cart-total"><span>جمع کل</span><span id="cartTotal">۰ تومان</span></div>
+      <button class="checkout-btn" id="goToPhoneBtn">ادامه ثبت سفارش</button>
     </div>
-    <button class="checkout-btn" id="checkoutBtn">ثبت سفارش</button>
-    <p class="cart-note">پرداخت آنلاین به‌زودی فعال می‌شود؛ سفارش شما برای تامین‌کننده نزدیک ارسال و برای هماهنگی با شما تماس گرفته می‌شود.</p>
+  </div>
+
+  <!-- مرحله ۲: شماره و کد تایید -->
+  <div id="stepPhone" class="cart-step hidden">
+    <p class="wizard-note">برای ادامه، شماره تماس خود را وارد کنید تا کد تایید برایتان ارسال شود.</p>
+    <input type="tel" id="buyerPhone" class="field" placeholder="شماره تماس شما">
+    <button class="checkout-btn" id="sendCodeBtn">دریافت کد تایید</button>
+    <div id="otpBox" class="hidden">
+      <p class="dev-note" id="devCodeNote"></p>
+      <input type="text" id="otpInput" class="field" placeholder="کد تایید را وارد کنید" inputmode="numeric">
+      <button class="checkout-btn" id="verifyCodeBtn">تایید و ادامه</button>
+    </div>
+    <button class="text-btn" id="backToCartBtn">بازگشت</button>
+  </div>
+
+  <!-- مرحله ۳: بازبینی نهایی و پرداخت -->
+  <div id="stepReview" class="cart-step hidden">
+    <div id="reviewItems" class="cart-items"></div>
+    <input type="text" id="buyerAddress" class="field" placeholder="آدرس تقریبی (اختیاری)">
+    <div class="cart-total"><span>جمع کل</span><span id="reviewTotal">۰ تومان</span></div>
+    <button class="checkout-btn" id="payBtn">پرداخت و ثبت نهایی سفارش</button>
+    <p class="cart-note">پرداخت آنلاین به‌زودی فعال می‌شود؛ فعلاً با تماس هماهنگ می‌شود.</p>
+  </div>
+
+  <!-- مرحله ۴: موفقیت -->
+  <div id="stepSuccess" class="cart-step hidden">
+    <div class="success-box">
+      <div class="success-icon">✅</div>
+      <p>سفارش شما با موفقیت ثبت شد</p>
+      <div class="tracking-code" id="trackingCode"></div>
+      <p class="wizard-note">این کد را برای پیگیری سفارش نزد خود نگه دارید.</p>
+      <button class="checkout-btn" id="closeSuccessBtn">باشه</button>
+    </div>
   </div>
 </aside>
 
+<!-- حساب من -->
+<div class="account-overlay" id="accountOverlay"></div>
+<div class="account-modal" id="accountModal">
+  <div class="city-modal-head"><h2>حساب من</h2><button class="icon-btn" id="closeAccountModal">✕</button></div>
+  <div id="accountLoggedOut">
+    <input type="tel" id="accountPhone" class="field" placeholder="شماره تماس شما">
+    <button class="checkout-btn" id="accountSendCodeBtn">دریافت کد تایید</button>
+    <div id="accountOtpBox" class="hidden">
+      <p class="dev-note" id="accountDevCodeNote"></p>
+      <input type="text" id="accountOtpInput" class="field" placeholder="کد تایید" inputmode="numeric">
+      <button class="checkout-btn" id="accountVerifyBtn">ورود</button>
+    </div>
+  </div>
+  <div id="accountLoggedIn" class="hidden">
+    <p class="wizard-note">شماره شما: <b id="accountPhoneLabel"></b> <button class="text-btn" id="accountLogoutBtn">خروج</button></p>
+    <h3 class="section-title">سفارش‌های من</h3>
+    <div id="myOrdersList" class="my-products"></div>
+    <h3 class="section-title">علاقه‌مندی‌های من</h3>
+    <div id="myFavoritesList" class="my-products"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<footer class="site-footer">
-  <a href="supplier.html">پنل تامین‌کنندگان</a>
-</footer>
+<footer class="site-footer" style="padding-bottom:80px"></footer>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -88,9 +173,7 @@
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  });
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 }
 </script>
 </body>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>حساب‌داری — ظرف من</title>
+<meta name="theme-color" content="#4C6B5D">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="supplier.css">
+<link rel="stylesheet" href="accounting.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a href="admin.html" class="icon-btn" aria-label="بازگشت به پنل مدیر">→</a>
+  <div class="brand">
+    <span class="brand-mark">ظ</span>
+    <span class="brand-name">حساب‌داری</span>
+  </div>
+</header>
+
+<!-- ورود (همان حساب مدیر) -->
+<section id="authSection" class="auth-box">
+  <h1>ورود</h1>
+  <p class="auth-sub">این بخش فقط برای صاحب فروشگاه است.</p>
+  <input id="authEmail" class="field" type="email" placeholder="ایمیل" autocomplete="username">
+  <input id="authPass" class="field" type="password" placeholder="رمز عبور" autocomplete="current-password">
+  <button id="loginBtn" class="primary-btn">ورود</button>
+  <p id="authError" class="auth-error"></p>
+</section>
+
+<!-- کد تایید دومرحله‌ای -->
+<section id="otpSection" class="auth-box hidden">
+  <h1>کد تایید</h1>
+  <p class="dev-note" id="adminDevCode"></p>
+  <input id="adminOtpInput" class="field" type="text" placeholder="کد تایید" inputmode="numeric">
+  <button id="adminOtpVerifyBtn" class="primary-btn">تایید و ورود</button>
+  <button id="adminOtpCancelBtn" class="text-btn">انصراف</button>
+  <p id="otpError" class="auth-error"></p>
+</section>
+
+<!-- پنل حساب‌داری -->
+<section id="panelSection" class="panel hidden">
+  <div class="panel-head">
+    <div class="panel-hello">حساب‌داری عمده‌فروشی</div>
+    <button id="logoutBtn" class="text-btn">خروج</button>
+  </div>
+
+  <nav class="tabs" id="accTabs">
+    <button class="tab-btn active" data-tab="persons">اشخاص</button>
+    <button class="tab-btn" data-tab="statement">صورت‌حساب</button>
+    <button class="tab-btn" data-tab="checks">چک‌ها</button>
+    <button class="tab-btn" data-tab="due">سررسید پرداخت</button>
+    <button class="tab-btn" data-tab="summary">گزارش کلی</button>
+  </nav>
+
+  <!-- تب اشخاص -->
+  <div class="tab-pane" id="tab-persons">
+    <h2 class="section-title">افزودن شخص جدید</h2>
+    <form id="personForm" class="product-form">
+      <input id="perName" class="field" type="text" placeholder="نام شخص / فروشگاه" required>
+      <input id="perPhone" class="field" type="tel" placeholder="شماره تماس">
+      <select id="perType" class="field">
+        <option value="customer">مشتری (خریدار)</option>
+        <option value="supplier">تامین‌کننده (فروشنده به ما)</option>
+        <option value="other">سایر</option>
+      </select>
+      <input id="perOpening" class="field" type="number" inputmode="numeric" placeholder="مانده اولیه حساب (تومان، اگر داشته باشد)">
+      <p class="wizard-note">مانده مثبت یعنی شخص به ما بدهکار است؛ منفی یعنی ما به او بدهکاریم (بستانکار).</p>
+      <button type="submit" class="primary-btn">افزودن شخص</button>
+    </form>
+
+    <h2 class="section-title">لیست اشخاص</h2>
+    <input id="personSearch" class="field" type="text" placeholder="جستجوی نام...">
+    <div id="personsList" class="my-products"></div>
+  </div>
+
+  <!-- تب صورت‌حساب -->
+  <div class="tab-pane hidden" id="tab-statement">
+    <select id="statementPersonSelect" class="field"></select>
+    <div id="personBalanceBox" class="acc-balance-box"></div>
+
+    <h2 class="section-title">ثبت سند جدید</h2>
+    <form id="txnForm" class="product-form">
+      <input id="txnDate" class="field" type="date">
+      <input id="txnDesc" class="field" type="text" placeholder="شرح (مثلاً فروش نسیه، دریافت وجه، ...)">
+      <div class="field-row">
+        <input id="txnDebit" class="field" type="number" inputmode="numeric" placeholder="بدهکار (تومان)">
+        <input id="txnCredit" class="field" type="number" inputmode="numeric" placeholder="بستانکار (تومان)">
+      </div>
+      <button type="submit" class="primary-btn">ثبت سند</button>
+    </form>
+
+    <h2 class="section-title">تاریخچه تراکنش‌ها</h2>
+    <div id="txnList" class="acc-table"></div>
+  </div>
+
+  <!-- تب چک‌ها -->
+  <div class="tab-pane hidden" id="tab-checks">
+    <h2 class="section-title">ثبت چک جدید</h2>
+    <form id="checkForm" class="product-form">
+      <select id="chkPersonSelect" class="field"></select>
+      <select id="chkDirection" class="field">
+        <option value="received">دریافتی (از مشتری گرفتیم)</option>
+        <option value="issued">پرداختی (به تامین‌کننده دادیم)</option>
+      </select>
+      <input id="chkAmount" class="field" type="number" inputmode="numeric" placeholder="مبلغ چک (تومان)" required>
+      <input id="chkNumber" class="field" type="text" placeholder="شماره چک">
+      <input id="chkBank" class="field" type="text" placeholder="نام بانک">
+      <input id="chkDue" class="field" type="date" required>
+      <button type="submit" class="primary-btn">ثبت چک</button>
+    </form>
+
+    <nav class="filters" id="checkStatusFilters"></nav>
+    <div id="checksList" class="my-products"></div>
+  </div>
+
+  <!-- تب سررسید -->
+  <div class="tab-pane hidden" id="tab-due">
+    <p class="wizard-note">چک‌های در جریان، به ترتیب نزدیک‌ترین سررسید — قرمز یعنی سررسید گذشته.</p>
+    <div id="dueList" class="my-products"></div>
+  </div>
+
+  <!-- تب گزارش کلی -->
+  <div class="tab-pane hidden" id="tab-summary">
+    <div id="summaryBox" class="report-box"></div>
+    <h2 class="section-title">بدهکاران (به ما بدهکارند)</h2>
+    <div id="debtorsList" class="my-products"></div>
+    <h2 class="section-title">بستانکاران (ما به آن‌ها بدهکاریم)</h2>
+    <div id="creditorsList" class="my-products"></div>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="accounting.js"></script>
+</body>
+</html>

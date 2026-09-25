@@ -22,19 +22,57 @@
   </div>
 </header>
 
-<!-- ورود / ثبت‌نام -->
-<section id="authSection" class="auth-box">
+<!-- ورود -->
+<section id="loginView" class="auth-box">
   <h1>ورود تامین‌کنندگان</h1>
-  <p class="auth-sub">با ایمیل خود وارد شوید یا اگر تازه‌وارد هستید ثبت‌نام کنید.</p>
-
-  <input id="supplierName" class="field" type="text" placeholder="نام فروشگاه / تامین‌کننده (فقط برای ثبت‌نام)">
-  <input id="supplierPhone" class="field" type="tel" placeholder="شماره تماس (فقط برای ثبت‌نام)">
-  <input id="authEmail" class="field" type="email" placeholder="ایمیل" autocomplete="username">
-  <input id="authPass" class="field" type="password" placeholder="رمز عبور (حداقل ۶ کاراکتر)" autocomplete="current-password">
-
+  <p class="auth-sub">با شماره موبایل و رمز عبور خود وارد شوید.</p>
+  <input id="loginPhone" class="field" type="tel" placeholder="شماره موبایل (۰۹...)" inputmode="numeric">
+  <input id="loginPassword" class="field" type="password" placeholder="رمز عبور" autocomplete="current-password">
   <button id="loginBtn" class="primary-btn">ورود</button>
-  <button id="registerBtn" class="secondary-btn">ثبت‌نام تامین‌کننده جدید</button>
-  <p id="authError" class="auth-error"></p>
+  <button id="goRegisterBtn" class="secondary-btn">ثبت‌نام تامین‌کننده جدید</button>
+  <button id="goForgotBtn" class="text-btn">رمز عبور را فراموش کرده‌اید؟</button>
+  <p id="loginError" class="auth-error"></p>
+</section>
+
+<!-- ثبت‌نام: مرحله ۱ شماره -->
+<section id="registerStep1" class="auth-box hidden">
+  <h1>ثبت‌نام تامین‌کننده</h1>
+  <input id="regName" class="field" type="text" placeholder="نام فروشگاه / تامین‌کننده">
+  <input id="regPhone" class="field" type="tel" placeholder="شماره موبایل (۰۹...)" inputmode="numeric">
+  <button id="regSendCodeBtn" class="primary-btn">دریافت کد تایید</button>
+  <button id="backToLoginBtn1" class="text-btn">بازگشت به ورود</button>
+  <p id="regError1" class="auth-error"></p>
+</section>
+
+<!-- ثبت‌نام: مرحله ۲ کد تایید -->
+<section id="registerStep2" class="auth-box hidden">
+  <h1>کد تایید</h1>
+  <p class="dev-note" id="regDevCode"></p>
+  <input id="regOtp" class="field" type="text" placeholder="کد تایید" inputmode="numeric">
+  <button id="regVerifyBtn" class="primary-btn">تایید</button>
+  <p id="regError2" class="auth-error"></p>
+</section>
+
+<!-- ثبت‌نام: مرحله ۳ ساخت رمز -->
+<section id="registerStep3" class="auth-box hidden">
+  <h1>ساخت رمز عبور</h1>
+  <input id="regPassword" class="field" type="password" placeholder="رمز عبور (حداقل ۶ کاراکتر)">
+  <input id="regPasswordConfirm" class="field" type="password" placeholder="تکرار رمز عبور">
+  <button id="regFinishBtn" class="primary-btn">تکمیل ثبت‌نام</button>
+  <p id="regError3" class="auth-error"></p>
+</section>
+
+<!-- فراموشی رمز -->
+<section id="forgotView" class="auth-box hidden">
+  <h1>بازیابی رمز عبور</h1>
+  <div id="forgotStepPhone">
+    <input id="forgotPhone" class="field" type="tel" placeholder="شماره موبایل (۰۹...)" inputmode="numeric">
+    <button id="forgotSendBtn" class="primary-btn">دریافت کد</button>
+  </div>
+  <div id="forgotStepNoAccount" class="hidden">
+    <p class="wizard-note">چون شماره تامین‌کنندگان هنوز به پیامک واقعی وصل نیست، بازیابی خودکار رمز فعلاً فعال نیست. لطفاً از طریق پیام به مدیر یا تماس مستقیم، درخواست بازنشانی رمز بدهید و پس از هماهنگی با شما، مدیر می‌تواند حساب شما را دوباره فعال کند.</p>
+  </div>
+  <button id="backToLoginBtn2" class="text-btn">بازگشت به ورود</button>
 </section>
 
 <!-- در انتظار تایید مدیر -->
@@ -69,27 +107,31 @@
       <select id="supplierCity" class="field"></select>
       <button type="button" id="getLocationBtn" class="secondary-btn">دریافت موقعیت مکانی دقیق (برای صف سفارش‌ها)</button>
       <p id="locationStatus" class="location-status"></p>
+      <input id="minOrder" class="field" type="number" inputmode="numeric" placeholder="حداقل مبلغ سفارش (تومان، اختیاری)">
+      <input id="deliveryFee" class="field" type="number" inputmode="numeric" placeholder="هزینه ارسال (تومان، اختیاری)">
+      <button type="button" id="saveProfileBtn" class="secondary-btn">ذخیره</button>
     </div>
     <div id="ordersList" class="my-products"></div>
   </div>
 
   <!-- تب محصولات -->
   <div class="tab-pane hidden" id="tab-products">
-    <h2 class="section-title">افزودن محصول جدید</h2>
+    <h2 class="section-title" id="productFormTitle">افزودن محصول جدید</h2>
     <form id="productForm" class="product-form">
-      <label class="photo-picker" id="photoPicker">
-        <img id="photoPreview" class="hidden">
-        <span id="photoPickerLabel">افزودن عکس</span>
-        <input type="file" id="photoInput" accept="image/*" capture="environment">
-      </label>
+      <div class="images-row" id="imagesRow"></div>
+      <button type="button" id="addImageBtn" class="dashed-btn">➕ افزودن عکس</button>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
 
       <input id="pName" class="field" type="text" placeholder="عنوان جنس" required>
-      <textarea id="pDesc" class="field" placeholder="توضیحات" rows="2"></textarea>
       <input id="pPrice" class="field" type="number" inputmode="numeric" placeholder="قیمت (تومان)" required>
       <input id="pStock" class="field" type="number" inputmode="numeric" placeholder="موجودی (تعداد)" required>
       <select id="pCategory" class="field"></select>
+      <label class="checkbox-row"><input type="checkbox" id="pFeatured"> نمایش در «پیشنهاد شگفت‌انگیز»</label>
 
-      <button type="submit" class="primary-btn" id="submitBtn">افزودن محصول</button>
+      <div id="customFieldsRow"></div>
+      <button type="button" id="addFieldBtn" class="dashed-btn">➕ افزودن فیلد (مثل ابعاد، تعداد در بسته، توضیحات)</button>
+
+      <button type="submit" class="primary-btn" id="submitBtn">ذخیره محصول</button>
       <button type="button" class="text-btn hidden" id="cancelEditBtn">انصراف از ویرایش</button>
     </form>
 

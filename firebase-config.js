@@ -23,5 +23,20 @@ const auth = firebase.auth();
 const CLOUDINARY_CLOUD_NAME = "lawoiiar";
 const CLOUDINARY_UPLOAD_PRESET = "zorof_products";
 
-// دسته‌بندی‌های ثابت محصولات — اگر خواستید می‌توانید این لیست را تغییر دهید
-const PRODUCT_CATEGORIES = ["یکبار مصرف", "چینی و سرامیک", "شیشه‌ای", "استیل", "سایر"];
+// -----------------------------------------------------------------
+// ابزارهای شماره موبایل ایران (برای ورود/ثبت‌نام تامین‌کننده و مدیر)
+// -----------------------------------------------------------------
+function normalizeIranPhone(phone) {
+  let p = (phone || "").replace(/\D/g, "");
+  if (p.startsWith("0098")) p = p.slice(4);
+  if (p.startsWith("98")) p = p.slice(2);
+  if (p.startsWith("9") && p.length === 10) p = "0" + p;
+  return p;
+}
+function isValidIranPhone(phone) {
+  return /^09\d{9}$/.test(normalizeIranPhone(phone));
+}
+function phoneToVirtualEmail(phone) {
+  return normalizeIranPhone(phone) + "@phone.zarf.app";
+}
+function generateDevOtp() { return String(Math.floor(1000 + Math.random() * 9000)); }

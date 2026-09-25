@@ -29,30 +29,55 @@
   <input id="authEmail" class="field" type="email" placeholder="ایمیل" autocomplete="username">
   <input id="authPass" class="field" type="password" placeholder="رمز عبور" autocomplete="current-password">
   <button id="loginBtn" class="primary-btn">ورود</button>
+  <button id="forgotPassBtn" class="text-btn">رمز عبور را فراموش کرده‌اید؟</button>
   <p id="authError" class="auth-error"></p>
+</section>
+
+<!-- مرحله دوم: کد تایید (هر بار ورود) -->
+<section id="otpSection" class="auth-box hidden">
+  <h1>کد تایید ورود</h1>
+  <p class="auth-sub">برای امنیت بیشتر، ورود مدیر همیشه دومرحله‌ای است.</p>
+  <p class="dev-note" id="adminDevCode"></p>
+  <input id="adminOtpInput" class="field" type="text" placeholder="کد تایید" inputmode="numeric">
+  <button id="adminOtpVerifyBtn" class="primary-btn">تایید و ورود</button>
+  <button id="adminOtpCancelBtn" class="text-btn">انصراف</button>
+  <p id="otpError" class="auth-error"></p>
 </section>
 
 <!-- پنل -->
 <section id="panelSection" class="panel hidden">
   <div class="panel-head">
     <div class="panel-hello">خوش آمدید، <span id="welcomeName"></span></div>
+    <a href="accounting.html" class="text-btn" style="text-decoration:none">حساب‌داری</a>
     <button id="logoutBtn" class="text-btn">خروج</button>
   </div>
 
   <nav class="tabs" id="adminTabs">
     <button class="tab-btn active" data-tab="products">تایید محصولات</button>
+    <button class="tab-btn" data-tab="categories">دسته‌بندی‌ها</button>
     <button class="tab-btn" data-tab="suppliers">تامین‌کنندگان</button>
     <button class="tab-btn" data-tab="customers">مشتریان</button>
     <button class="tab-btn" data-tab="orders">سفارش‌ها</button>
     <button class="tab-btn" data-tab="inventory">موجودی</button>
     <button class="tab-btn" data-tab="report">گزارش</button>
     <button class="tab-btn" data-tab="messages">پیام‌رسانی</button>
+    <button class="tab-btn" data-tab="settings">تنظیمات</button>
   </nav>
 
   <!-- تایید محصولات -->
   <div class="tab-pane" id="tab-products">
     <nav class="filters" id="statusFilters"></nav>
     <div id="productsList" class="my-products"></div>
+  </div>
+
+  <!-- دسته‌بندی‌ها -->
+  <div class="tab-pane hidden" id="tab-categories">
+    <div class="product-form">
+      <input id="catNameInput" class="field" type="text" placeholder="نام دسته (مثلاً چینی و سرامیک)">
+      <input id="catIconInput" class="field" type="text" placeholder="یک اموجی برای آیکون (اختیاری، مثلاً 🍽️)">
+      <button id="addCatBtn" class="primary-btn">افزودن دسته</button>
+    </div>
+    <div id="categoriesListAdmin" class="my-products"></div>
   </div>
 
   <!-- تامین‌کنندگان -->
@@ -88,6 +113,33 @@
     <div class="message-input-row">
       <input id="adminMsgInput" class="field" type="text" placeholder="پیام...">
       <button id="adminMsgSend" class="primary-btn small">ارسال</button>
+    </div>
+  </div>
+
+  <!-- تنظیمات -->
+  <div class="tab-pane hidden" id="tab-settings">
+    <h2 class="section-title">ظاهر فروشگاه</h2>
+    <div class="product-form">
+      <p class="wizard-note">تم فروشگاه را برای همه بازدیدکنندگان تغییر می‌دهد (مثلاً حالت مشکی برای ایام محرم).</p>
+      <select id="themeSelect" class="field">
+        <option value="color">رنگی (حالت عادی)</option>
+        <option value="black">مشکی (ایام سوگواری)</option>
+      </select>
+      <button id="saveThemeBtn" class="primary-btn">اعمال تم</button>
+    </div>
+
+    <h2 class="section-title">خروجی گزارش</h2>
+    <div class="product-form">
+      <button id="exportCsvBtn" class="secondary-btn">دانلود گزارش سفارش‌ها (CSV)</button>
+    </div>
+
+    <h2 class="section-title">بازنشانی داده‌های آزمایشی</h2>
+    <div class="product-form">
+      <p class="wizard-note">هرکدام را جدا پاک کنید، یا همه را یک‌جا با «بازنشانی کامل».</p>
+      <button data-reset="products" class="secondary-btn">پاک‌کردن همه محصولات</button>
+      <button data-reset="orders" class="secondary-btn">پاک‌کردن همه سفارش‌ها</button>
+      <button data-reset="messages" class="secondary-btn">پاک‌کردن همه پیام‌ها</button>
+      <button id="fullResetBtn" class="primary-btn" style="background:#A13B24">بازنشانی کامل (همه‌چیز)</button>
     </div>
   </div>
 </section>

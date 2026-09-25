@@ -1,0 +1,60 @@
+.acc-balance-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+  margin: 10px 0 18px;
+}
+.acc-balance-box .amount {
+  font-size: 22px;
+  font-weight: 800;
+  margin-top: 4px;
+}
+.acc-balance-box .amount.debtor { color: #A13B24; }
+.acc-balance-box .amount.creditor { color: #2F6B4B; }
+.acc-balance-box .amount.settled { color: var(--muted); }
+
+.acc-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.acc-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+}
+.acc-row-top {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.acc-row-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.acc-amt-debit { color: #A13B24; font-weight: 700; }
+.acc-amt-credit { color: #2F6B4B; font-weight: 700; }
+.acc-balance-after { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.person-balance-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-top: 4px;
+}
+.person-balance-tag.debtor { background: #F3D9D3; color: #A13B24; }
+.person-balance-tag.creditor { background: #DCEBE1; color: #2F6B4B; }
+.person-balance-tag.settled { background: var(--bg); color: var(--muted); }
+
+.due-item.overdue { border-color: #A13B24; }
+.due-item.overdue .due-date { color: #A13B24; font-weight: 700; }
+.due-date { font-size: 12px; color: var(--muted); }

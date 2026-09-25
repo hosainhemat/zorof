@@ -2,14 +2,13 @@
 // پنل تامین‌کننده — ظرف من
 // -----------------------------------------------------------------
 
-const authSection = document.getElementById("authSection");
+const loginView = document.getElementById("loginView");
+const registerStep1 = document.getElementById("registerStep1");
+const registerStep2 = document.getElementById("registerStep2");
+const registerStep3 = document.getElementById("registerStep3");
+const forgotView = document.getElementById("forgotView");
 const pendingSection = document.getElementById("pendingSection");
 const panelSection = document.getElementById("panelSection");
-const authEmail = document.getElementById("authEmail");
-const authPass = document.getElementById("authPass");
-const supplierNameInput = document.getElementById("supplierName");
-const supplierPhoneInput = document.getElementById("supplierPhone");
-const authError = document.getElementById("authError");
 const welcomeName = document.getElementById("welcomeName");
 const myProductsEl = document.getElementById("myProducts");
 const toastEl = document.getElementById("toast");
@@ -18,25 +17,31 @@ const getLocationBtn = document.getElementById("getLocationBtn");
 const locationStatusEl = document.getElementById("locationStatus");
 const ordersListEl = document.getElementById("ordersList");
 const reportBox = document.getElementById("reportBox");
+const minOrderInput = document.getElementById("minOrder");
+const deliveryFeeInput = document.getElementById("deliveryFee");
 
 const productForm = document.getElementById("productForm");
+const productFormTitle = document.getElementById("productFormTitle");
 const pName = document.getElementById("pName");
-const pDesc = document.getElementById("pDesc");
 const pPrice = document.getElementById("pPrice");
 const pStock = document.getElementById("pStock");
 const pCategory = document.getElementById("pCategory");
+const pFeatured = document.getElementById("pFeatured");
 const photoInput = document.getElementById("photoInput");
-const photoPreview = document.getElementById("photoPreview");
-const photoPickerLabel = document.getElementById("photoPickerLabel");
+const imagesRow = document.getElementById("imagesRow");
+const addImageBtn = document.getElementById("addImageBtn");
+const customFieldsRow = document.getElementById("customFieldsRow");
+const addFieldBtn = document.getElementById("addFieldBtn");
 const submitBtn = document.getElementById("submitBtn");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 
 let editingId = null;
-let selectedFile = null;
 let currentUser = null;
 let supplierProfile = { city: "", lat: null, lng: null, status: "pending" };
 let ordersUnsub = null;
-let ordersTimer = null;
+let categoriesCache = [];
+let productImages = [];
+let regPendingCode = null, regPendingName = "", regPendingPhone = "";
 
 function showToast(msg) {
   toastEl.textContent = msg;
@@ -46,13 +51,19 @@ function showToast(msg) {
 }
 function toman(n) { return Number(n).toLocaleString("fa-IR") + " تومان"; }
 
-// دسته‌بندی‌ها
-(PRODUCT_CATEGORIES || []).forEach(cat => {
-  const opt = document.createElement("option");
-  opt.value = cat; opt.textContent = cat;
-  pCategory.appendChild(opt);
-});
-// شهرها
+function listenCategories() {
+  db.collection("categories").orderBy("order", "asc").onSnapshot(snap => {
+    categoriesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const current = pCategory.value;
+    pCategory.innerHTML = "";
+    categoriesCache.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.name; opt.textContent = c.name;
+      pCategory.appendChild(opt);
+    });
+    if (current) pCategory.value = current;
+  });
+}
 if (typeof IRAN_CITIES !== "undefined") {
   const ph = document.createElement("option"); ph.value = ""; ph.textContent = "شهر خود را انتخاب کنید";
   supplierCitySelect.appendChild(ph);
@@ -62,29 +73,74 @@ if (typeof IRAN_CITIES !== "undefined") {
   });
 }
 
-// -------------------- احراز هویت --------------------
+// -------------------- نمایش صفحه‌های احراز هویت --------------------
+function showAuthView(view) {
+  [loginView, registerStep1, registerStep2, registerStep3, forgotView].forEach(v => v.classList.add("hidden"));
+  view.classList.remove("hidden");
+}
+
+// -------------------- ورود --------------------
 document.getElementById("loginBtn").onclick = () => {
-  authError.textContent = "";
-  auth.signInWithEmailAndPassword(authEmail.value.trim(), authPass.value)
-    .catch(err => authError.textContent = translateAuthError(err));
+  const errEl = document.getElementById("loginError");
+  errEl.textContent = "";
+  const phone = document.getElementById("loginPhone").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  if (!isValidIranPhone(phone)) { errEl.textContent = "شماره موبایل معتبر ایران وارد کنید (۰۹...)."; return; }
+  auth.signInWithEmailAndPassword(phoneToVirtualEmail(phone), password)
+    .catch(err => errEl.textContent = translateAuthError(err));
+};
+document.getElementById("goRegisterBtn").onclick = () => showAuthView(registerStep1);
+document.getElementById("goForgotBtn").onclick = () => {
+  showAuthView(forgotView);
+  document.getElementById("forgotStepPhone").classList.remove("hidden");
+  document.getElementById("forgotStepNoAccount").classList.add("hidden");
+};
+document.getElementById("backToLoginBtn1").onclick = () => showAuthView(loginView);
+document.getElementById("backToLoginBtn2").onclick = () => showAuthView(loginView);
+
+// -------------------- ثبت‌نام (۳ مرحله: شماره → کد → رمز) --------------------
+document.getElementById("regSendCodeBtn").onclick = () => {
+  const errEl = document.getElementById("regError1");
+  errEl.textContent = "";
+  const name = document.getElementById("regName").value.trim();
+  const phone = document.getElementById("regPhone").value.trim();
+  if (!name) { errEl.textContent = "نام فروشگاه را وارد کنید."; return; }
+  if (!isValidIranPhone(phone)) { errEl.textContent = "شماره موبایل معتبر ایران وارد کنید (۰۹...)."; return; }
+  regPendingName = name; regPendingPhone = normalizeIranPhone(phone);
+  regPendingCode = generateDevOtp();
+  document.getElementById("regDevCode").textContent = `⚠️ حالت آزمایشی (پیامک هنوز وصل نیست) — کد شما: ${regPendingCode}`;
+  showAuthView(registerStep2);
+};
+document.getElementById("regVerifyBtn").onclick = () => {
+  const errEl = document.getElementById("regError2");
+  const code = document.getElementById("regOtp").value.trim();
+  if (code !== regPendingCode) { errEl.textContent = "کد وارد‌شده درست نیست."; return; }
+  errEl.textContent = "";
+  showAuthView(registerStep3);
+};
+document.getElementById("regFinishBtn").onclick = () => {
+  const errEl = document.getElementById("regError3");
+  const pass = document.getElementById("regPassword").value;
+  const pass2 = document.getElementById("regPasswordConfirm").value;
+  if (pass.length < 6) { errEl.textContent = "رمز عبور باید حداقل ۶ کاراکتر باشد."; return; }
+  if (pass !== pass2) { errEl.textContent = "تکرار رمز عبور یکسان نیست."; return; }
+  auth.createUserWithEmailAndPassword(phoneToVirtualEmail(regPendingPhone), pass)
+    .then(cred => cred.user.updateProfile({ displayName: regPendingName }).then(() =>
+      db.collection("suppliers").doc(cred.user.uid).set({
+        name: regPendingName, phone: regPendingPhone,
+        status: "pending", city: "", lat: null, lng: null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      })
+    ))
+    .catch(err => errEl.textContent = translateAuthError(err));
 };
 
-document.getElementById("registerBtn").onclick = () => {
-  authError.textContent = "";
-  const name = supplierNameInput.value.trim();
-  const phone = supplierPhoneInput.value.trim();
-  if (!name || !phone) { authError.textContent = "نام فروشگاه و شماره تماس الزامی است."; return; }
-  auth.createUserWithEmailAndPassword(authEmail.value.trim(), authPass.value)
-    .then(cred => {
-      return cred.user.updateProfile({ displayName: name }).then(() =>
-        db.collection("suppliers").doc(cred.user.uid).set({
-          name, phone, email: authEmail.value.trim(),
-          status: "pending", city: "", lat: null, lng: null,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        })
-      );
-    })
-    .catch(err => authError.textContent = translateAuthError(err));
+// -------------------- فراموشی رمز --------------------
+document.getElementById("forgotSendBtn").onclick = () => {
+  const phone = document.getElementById("forgotPhone").value.trim();
+  if (!isValidIranPhone(phone)) { showToast("شماره موبایل معتبر ایران وارد کنید"); return; }
+  document.getElementById("forgotStepPhone").classList.add("hidden");
+  document.getElementById("forgotStepNoAccount").classList.remove("hidden");
 };
 
 document.getElementById("logoutBtn").onclick = () => auth.signOut();
@@ -92,10 +148,10 @@ document.getElementById("pendingLogoutBtn").onclick = () => auth.signOut();
 
 function translateAuthError(err) {
   const map = {
-    "auth/invalid-email": "ایمیل معتبر نیست.",
-    "auth/user-not-found": "کاربری با این ایمیل پیدا نشد.",
+    "auth/invalid-email": "شماره یا فرمت آن معتبر نیست.",
+    "auth/user-not-found": "حسابی با این شماره پیدا نشد.",
     "auth/wrong-password": "رمز عبور اشتباه است.",
-    "auth/email-already-in-use": "این ایمیل قبلاً ثبت‌نام کرده — وارد شوید.",
+    "auth/email-already-in-use": "این شماره قبلاً ثبت‌نام کرده — وارد شوید.",
     "auth/weak-password": "رمز عبور باید حداقل ۶ کاراکتر باشد.",
   };
   return map[err.code] || "خطایی رخ داد: " + err.message;
@@ -104,21 +160,25 @@ function translateAuthError(err) {
 auth.onAuthStateChanged(user => {
   currentUser = user;
   if (ordersUnsub) { ordersUnsub(); ordersUnsub = null; }
-  if (ordersTimer) { clearInterval(ordersTimer); ordersTimer = null; }
-
-  authSection.classList.add("hidden");
+  loginView.classList.add("hidden");
+  registerStep1.classList.add("hidden");
+  registerStep2.classList.add("hidden");
+  registerStep3.classList.add("hidden");
+  forgotView.classList.add("hidden");
   pendingSection.classList.add("hidden");
   panelSection.classList.add("hidden");
-
-  if (!user) { authSection.classList.remove("hidden"); return; }
+  if (!user) { showAuthView(loginView); return; }
 
   db.collection("suppliers").doc(user.uid).get().then(doc => {
     supplierProfile = doc.exists ? doc.data() : { status: "pending" };
     if (supplierProfile.status === "approved") {
       panelSection.classList.remove("hidden");
-      welcomeName.textContent = user.displayName || user.email;
+      welcomeName.textContent = user.displayName || supplierProfile.phone || "";
       supplierCitySelect.value = supplierProfile.city || "";
+      minOrderInput.value = supplierProfile.minOrder || "";
+      deliveryFeeInput.value = supplierProfile.deliveryFee || "";
       if (supplierProfile.lat != null) locationStatusEl.textContent = "موقعیت مکانی دقیق ثبت شده ✅";
+      listenCategories();
       listenMyProducts();
       listenOrders();
       renderReport();
@@ -145,10 +205,16 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
   };
 });
 
-// -------------------- موقعیت فروشگاه --------------------
-supplierCitySelect.onchange = () => {
+// -------------------- موقعیت / پروفایل فروشگاه --------------------
+supplierCitySelect.onchange = () => { supplierProfile.city = supplierCitySelect.value; };
+
+document.getElementById("saveProfileBtn").onclick = () => {
   supplierProfile.city = supplierCitySelect.value;
-  db.collection("suppliers").doc(currentUser.uid).set({ city: supplierProfile.city }, { merge: true });
+  supplierProfile.minOrder = Number(minOrderInput.value) || null;
+  supplierProfile.deliveryFee = Number(deliveryFeeInput.value) || null;
+  db.collection("suppliers").doc(currentUser.uid).set({
+    city: supplierProfile.city, minOrder: supplierProfile.minOrder, deliveryFee: supplierProfile.deliveryFee,
+  }, { merge: true }).then(() => showToast("ذخیره شد"));
 };
 
 getLocationBtn.onclick = () => {
@@ -156,8 +222,7 @@ getLocationBtn.onclick = () => {
   getLocationBtn.textContent = "در حال دریافت موقعیت...";
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      supplierProfile.lat = pos.coords.latitude;
-      supplierProfile.lng = pos.coords.longitude;
+      supplierProfile.lat = pos.coords.latitude; supplierProfile.lng = pos.coords.longitude;
       db.collection("suppliers").doc(currentUser.uid).set({ lat: supplierProfile.lat, lng: supplierProfile.lng }, { merge: true });
       locationStatusEl.textContent = "موقعیت مکانی دقیق ثبت شده ✅";
       getLocationBtn.textContent = "دریافت موقعیت مکانی دقیق (برای صف سفارش‌ها)";
@@ -167,22 +232,53 @@ getLocationBtn.onclick = () => {
   );
 };
 
-// -------------------- انتخاب عکس --------------------
+// -------------------- تصاویر محصول (چندتایی) --------------------
+function renderImagesRow() {
+  imagesRow.innerHTML = "";
+  productImages.forEach((img, idx) => {
+    const slot = document.createElement("div");
+    slot.className = "image-slot";
+    const src = img.type === "existing" ? img.url : img.previewUrl;
+    slot.innerHTML = `<img src="${src}"><button type="button" class="remove-img">✕</button>`;
+    slot.querySelector(".remove-img").onclick = () => { productImages.splice(idx, 1); renderImagesRow(); };
+    imagesRow.appendChild(slot);
+  });
+}
+
+addImageBtn.onclick = () => photoInput.click();
 photoInput.onchange = () => {
   const file = photoInput.files[0];
   if (!file) return;
-  selectedFile = file;
   const reader = new FileReader();
-  reader.onload = e => { photoPreview.src = e.target.result; photoPreview.classList.remove("hidden"); photoPickerLabel.classList.add("hidden"); };
+  reader.onload = e => {
+    productImages.push({ type: "new", file, previewUrl: e.target.result });
+    renderImagesRow();
+  };
   reader.readAsDataURL(file);
+  photoInput.value = "";
 };
+
+// -------------------- فیلدهای دلخواه محصول --------------------
+function addFieldRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "field-row";
+  row.innerHTML = `
+    <input type="text" class="field field-label" placeholder="نام فیلد (مثلاً ابعاد)" value="${label || ""}">
+    <input type="text" class="field field-value" placeholder="مقدار" value="${value || ""}">
+    <button type="button" class="remove-field">✕</button>
+  `;
+  row.querySelector(".remove-field").onclick = () => row.remove();
+  customFieldsRow.appendChild(row);
+}
+addFieldBtn.onclick = () => addFieldRow("", "");
 
 function resetForm() {
   productForm.reset();
-  photoPreview.classList.add("hidden"); photoPreview.src = "";
-  photoPickerLabel.classList.remove("hidden");
-  selectedFile = null; editingId = null;
-  submitBtn.textContent = "افزودن محصول";
+  productImages = []; renderImagesRow();
+  customFieldsRow.innerHTML = "";
+  editingId = null;
+  productFormTitle.textContent = "افزودن محصول جدید";
+  submitBtn.textContent = "ذخیره محصول";
   cancelEditBtn.classList.add("hidden");
 }
 cancelEditBtn.onclick = resetForm;
@@ -203,7 +299,6 @@ productForm.onsubmit = async (e) => {
   e.preventDefault();
   if (!currentUser) return;
   const name = pName.value.trim();
-  const desc = pDesc.value.trim();
   const price = Number(pPrice.value);
   const stock = Number(pStock.value);
   const category = pCategory.value;
@@ -212,18 +307,27 @@ productForm.onsubmit = async (e) => {
   submitBtn.disabled = true;
   submitBtn.textContent = "در حال ذخیره...";
   try {
-    let imageUrl = null;
-    if (selectedFile) imageUrl = await uploadToCloudinary(selectedFile);
+    const newFiles = productImages.filter(i => i.type === "new");
+    const uploadedUrls = [];
+    for (const item of newFiles) uploadedUrls.push(await uploadToCloudinary(item.file));
+    let uploadIdx = 0;
+    const finalImages = productImages.map(i => i.type === "existing" ? i.url : uploadedUrls[uploadIdx++]);
+
+    const fields = Array.from(customFieldsRow.querySelectorAll(".field-row")).map(row => ({
+      label: row.querySelector(".field-label").value.trim(),
+      value: row.querySelector(".field-value").value.trim(),
+    })).filter(f => f.label || f.value);
 
     const data = {
-      name, desc, price, category, stock: isNaN(stock) ? 0 : stock,
+      name, price, category, stock: isNaN(stock) ? 0 : stock,
+      images: finalImages, fields,
+      featured: !!pFeatured.checked,
       supplierId: currentUser.uid,
       supplierName: currentUser.displayName || currentUser.email,
       supplierCity: supplierProfile.city || null,
     };
     if (supplierProfile.lat != null) data.supplierLat = supplierProfile.lat;
     if (supplierProfile.lng != null) data.supplierLng = supplierProfile.lng;
-    if (imageUrl) data.imageUrl = imageUrl;
 
     if (editingId) {
       data.status = "pending";
@@ -238,10 +342,10 @@ productForm.onsubmit = async (e) => {
     resetForm();
   } catch (err) {
     console.error(err);
-    showToast("خطا در ذخیره محصول");
+    showToast(err.message || "خطا در ذخیره محصول");
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = editingId ? "ذخیره تغییرات" : "افزودن محصول";
+    submitBtn.textContent = editingId ? "ذخیره تغییرات" : "ذخیره محصول";
   }
 };
 
@@ -266,13 +370,13 @@ function renderMyProducts(items) {
   if (items.length === 0) { myProductsEl.innerHTML = `<p class="my-empty">هنوز محصولی ثبت نکرده‌اید.</p>`; return; }
   myProductsEl.innerHTML = "";
   items.forEach(p => {
+    const img = (p.images && p.images[0]) || p.imageUrl;
     const row = document.createElement("div");
     row.className = "my-product";
-    const thumb = p.imageUrl ? `<img src="${p.imageUrl}" alt="">` : `<div class="ph">🍽️</div>`;
     row.innerHTML = `
-      ${thumb}
+      ${img ? `<img src="${img}" alt="">` : `<div class="ph">🍽️</div>`}
       <div class="my-product-info">
-        <div class="my-product-name">${p.name}</div>
+        <div class="my-product-name">${p.name}${p.featured ? " 🔥" : ""}</div>
         <div class="my-product-price">${toman(p.price)} · موجودی: ${p.stock ?? 0}</div>
         ${statusBadge(p.status)}
       </div>
@@ -282,46 +386,43 @@ function renderMyProducts(items) {
       </div>
     `;
     row.querySelector('[data-act="edit"]').onclick = () => startEdit(p);
-    row.querySelector('[data-act="delete"]').onclick = () => deleteProduct(p.id);
+    row.querySelector('[data-act="delete"]').onclick = () => deleteProduct(p.id, p.name);
     myProductsEl.appendChild(row);
   });
 }
 
 function startEdit(p) {
   editingId = p.id;
-  pName.value = p.name || ""; pDesc.value = p.desc || ""; pPrice.value = p.price || "";
+  pName.value = p.name || ""; pPrice.value = p.price || "";
   pStock.value = p.stock ?? 0; pCategory.value = p.category || "";
-  if (p.imageUrl) { photoPreview.src = p.imageUrl; photoPreview.classList.remove("hidden"); photoPickerLabel.classList.add("hidden"); }
+  pFeatured.checked = !!p.featured;
+  productImages = (p.images && p.images.length ? p.images : (p.imageUrl ? [p.imageUrl] : [])).map(url => ({ type: "existing", url }));
+  renderImagesRow();
+  customFieldsRow.innerHTML = "";
+  (p.fields || []).forEach(f => addFieldRow(f.label, f.value));
+  productFormTitle.textContent = "ویرایش محصول";
   submitBtn.textContent = "ذخیره تغییرات";
   cancelEditBtn.classList.remove("hidden");
   document.querySelector('[data-tab="products"]').click();
   productForm.scrollIntoView({ behavior: "smooth" });
 }
 
-function deleteProduct(id) {
-  if (!confirm("این محصول حذف شود؟")) return;
+function deleteProduct(id, name) {
+  if (!confirm(`آیا مطمئن هستید که می‌خواهید «${name}» را حذف کنید؟`)) return;
+  if (!confirm("این عمل قابل بازگشت نیست. حذف نهایی شود؟")) return;
   db.collection("products").doc(id).delete()
     .then(() => showToast("محصول حذف شد"))
     .catch(err => { console.error(err); showToast("خطا در حذف محصول"); });
 }
 
 // -------------------- سفارش‌ها (صف هدایت) --------------------
-const REVEAL_WINDOW_MS = 2 * 60 * 1000; // ۲ دقیقه
-
-function revealTimeForIndex(order, i) {
-  if (i === 0) return order.createdAtMs;
-  const prevSupplier = order.queue[i - 1];
-  const prevReveal = revealTimeForIndex(order, i - 1);
-  const prevReject = (order.rejections || {})[prevSupplier];
-  return prevReject ? prevReject : prevReveal + REVEAL_WINDOW_MS;
-}
-
 function isVisibleToMe(order) {
   const myIndex = order.queue.indexOf(currentUser.uid);
   if (myIndex === -1) return false;
-  if ((order.rejections || {})[currentUser.uid]) return false; // خودم رد کرده‌ام
-  if (order.assignedTo) return false; // قبلاً پذیرفته شده
-  return Date.now() >= revealTimeForIndex(order, myIndex);
+  if ((order.rejections || {})[currentUser.uid]) return false;
+  if (order.assignedTo) return false;
+  for (let i = 0; i < myIndex; i++) if (!(order.rejections || {})[order.queue[i]]) return false;
+  return true;
 }
 
 function listenOrders() {
@@ -330,13 +431,9 @@ function listenOrders() {
     .where("queue", "array-contains", currentUser.uid)
     .where("status", "==", "pending")
     .onSnapshot(snapshot => {
-      const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      window._myOrders = orders;
+      window._myOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       renderOrders();
     }, err => { console.error(err); ordersListEl.innerHTML = `<p class="my-empty">خطا در بارگذاری سفارش‌ها.</p>`; });
-
-  if (ordersTimer) clearInterval(ordersTimer);
-  ordersTimer = setInterval(renderOrders, 5000); // برای به‌روزرسانی نمایش/شمارش معکوس
 }
 
 function renderOrders() {
@@ -346,24 +443,17 @@ function renderOrders() {
   orders.forEach(o => {
     const itemsText = (o.items || []).map(it => `${it.name} × ${it.qty}`).join("، ");
     const myIndex = o.queue.indexOf(currentUser.uid);
-    const nextReveal = revealTimeForIndex(o, myIndex + 1);
-    const remainMs = Math.max(0, nextReveal - Date.now());
-    const remainMin = Math.floor(remainMs / 60000);
-    const remainSec = Math.floor((remainMs % 60000) / 1000);
-    const timeLabel = (myIndex + 1 < o.queue.length)
-      ? `اگر پاسخ ندهید، تا ${remainMin}:${String(remainSec).padStart(2, "0")} دیگر به تامین‌کننده بعدی هم نمایش داده می‌شود`
-      : `شما آخرین گزینه در این سفارش هستید`;
-
+    const noteText = (myIndex + 1 < o.queue.length)
+      ? "این سفارش فقط برای شماست. اگر رد کنید، بلافاصله به نزدیک‌ترین تامین‌کننده بعدی نمایش داده می‌شود."
+      : "شما آخرین گزینه برای این سفارش هستید.";
     const card = document.createElement("div");
     card.className = "order-card";
     card.innerHTML = `
-      <div class="order-head">
-        <span class="status-badge badge-pending">سفارش جدید</span>
-      </div>
+      <div class="order-head"><span class="status-badge badge-pending">سفارش جدید</span></div>
       <div class="order-items">${itemsText}</div>
       <div class="order-total">${toman(o.total)}</div>
       <div class="order-meta">${o.buyerAddress || o.buyerCity || ""}</div>
-      <div class="order-countdown">${timeLabel}</div>
+      <div class="order-countdown">${noteText}</div>
       <div class="order-actions">
         <a href="tel:${o.buyerPhone}">تماس با خریدار</a>
         <button data-act="accept" class="primary-action">قبول سفارش</button>
@@ -384,12 +474,8 @@ function acceptOrder(orderId) {
     const data = doc.data();
     if (data.status !== "pending" || data.assignedTo) throw new Error("این سفارش قبلاً توسط تامین‌کننده دیگری پذیرفته شده");
     tx.update(ref, { status: "assigned", assignedTo: currentUser.uid, assignedAt: firebase.firestore.FieldValue.serverTimestamp() });
-  }).then(() => {
-    showToast("سفارش پذیرفته شد ✅");
-  }).catch(err => {
-    console.error(err);
-    showToast(err.message || "خطا در پذیرش سفارش");
-  });
+  }).then(() => showToast("سفارش پذیرفته شد ✅"))
+    .catch(err => { console.error(err); showToast(err.message || "خطا در پذیرش سفارش"); });
 }
 
 function rejectOrder(orderId) {
@@ -431,7 +517,6 @@ function renderMessages(container, msgs) {
   });
   container.scrollTop = container.scrollHeight;
 }
-
 function listenMessages() {
   db.collection("messages").where("supplierId", "==", currentUser.uid).orderBy("createdAt", "asc")
     .onSnapshot(snap => renderMessages(document.getElementById("supplierMessages"), snap.docs.map(d => d.data())));
@@ -440,7 +525,6 @@ function listenPendingMessages() {
   db.collection("messages").where("supplierId", "==", currentUser.uid).orderBy("createdAt", "asc")
     .onSnapshot(snap => renderMessages(document.getElementById("pendingMessages"), snap.docs.map(d => d.data())));
 }
-
 function sendMessage(text) {
   if (!text.trim() || !currentUser) return;
   db.collection("messages").add({
@@ -448,12 +532,5 @@ function sendMessage(text) {
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
   });
 }
-
-document.getElementById("supplierMsgSend").onclick = () => {
-  const input = document.getElementById("supplierMsgInput");
-  sendMessage(input.value); input.value = "";
-};
-document.getElementById("pendingMsgSend").onclick = () => {
-  const input = document.getElementById("pendingMsgInput");
-  sendMessage(input.value); input.value = "";
-};
+document.getElementById("supplierMsgSend").onclick = () => { const i = document.getElementById("supplierMsgInput"); sendMessage(i.value); i.value = ""; };
+document.getElementById("pendingMsgSend").onclick = () => { const i = document.getElementById("pendingMsgInput"); sendMessage(i.value); i.value = ""; };
