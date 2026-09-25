@@ -1,4 +1,4 @@
-const CACHE_NAME = "zorof-shop-v1";
+const CACHE_NAME = "zorof-shop-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -25,20 +25,17 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
+// استراتژی «اول شبکه»: همیشه سعی می‌کند نسخه تازه را از سرور بگیرد؛
+// فقط وقتی اینترنت قطع بود، از کش (نسخه قبلی) استفاده می‌کند.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    caches.match(e.request).then((cached) => {
-      return (
-        cached ||
-        fetch(e.request)
-          .then((res) => {
-            const resClone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, resClone));
-            return res;
-          })
-          .catch(() => cached)
-      );
-    })
+    fetch(e.request)
+      .then((res) => {
+        const resClone = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, resClone));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
