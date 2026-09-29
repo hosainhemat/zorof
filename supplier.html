@@ -84,6 +84,8 @@
     <input id="pendingMsgInput" class="field" type="text" placeholder="پیام به مدیر...">
     <button id="pendingMsgSend" class="primary-btn small">ارسال</button>
   </div>
+  <p id="pendingDiag" class="supplier-tag"></p>
+  <button id="pendingRefreshBtn" class="secondary-btn">بررسی دوباره وضعیت</button>
   <button id="pendingLogoutBtn" class="text-btn">خروج</button>
 </section>
 
@@ -97,6 +99,8 @@
   <nav class="tabs" id="supplierTabs">
     <button class="tab-btn active" data-tab="orders">سفارش‌ها</button>
     <button class="tab-btn" data-tab="products">محصولات</button>
+    <button class="tab-btn" data-tab="trusted">مشتریان معتبر</button>
+    <button class="tab-btn" data-tab="credit">اعتبار مشتریان</button>
     <button class="tab-btn" data-tab="report">گزارش من</button>
     <button class="tab-btn" data-tab="messages">پیام با مدیر</button>
   </nav>
@@ -112,6 +116,9 @@
       <button type="button" id="saveProfileBtn" class="secondary-btn">ذخیره</button>
     </div>
     <div id="ordersList" class="my-products"></div>
+
+    <h2 class="section-title">سفارش‌های پذیرفته‌شده من</h2>
+    <div id="acceptedOrdersList" class="my-products"></div>
   </div>
 
   <!-- تب محصولات -->
@@ -139,6 +146,30 @@
     <div id="myProducts" class="my-products"></div>
   </div>
 
+  <!-- تب مشتریان معتبر -->
+  <div class="tab-pane hidden" id="tab-trusted">
+    <p class="wizard-note">شماره تلفن مشتری‌هایی که به آن‌ها برای «خرید چکی» اعتماد دارید اینجا اضافه کنید. این مشتری فقط از این پس گزینه پرداخت چکی را در فروشگاه می‌بیند.</p>
+    <form id="trustedForm" class="product-form">
+      <input id="trustedPhoneInput" class="field" type="tel" placeholder="شماره موبایل مشتری" required>
+      <button type="submit" class="primary-btn">افزودن به لیست معتبر</button>
+    </form>
+    <div id="trustedList" class="my-products"></div>
+  </div>
+
+  <!-- تب اعتبار مشتریان -->
+  <div class="tab-pane hidden" id="tab-credit">
+    <p class="wizard-note">برای هر مشتری یک سقف اعتبار (تومان) تعیین کنید. این عدد هیچ‌وقت به خود مشتری نشان داده نمی‌شود — او فقط می‌بیند گزینه «خرید اعتباری» برایش فعال است.</p>
+    <form id="creditForm" class="product-form">
+      <input id="creditPhoneInput" class="field" type="tel" placeholder="شماره موبایل مشتری" required>
+      <input id="creditLimitInput" class="field" type="number" inputmode="numeric" placeholder="سقف اعتبار (تومان)" required>
+      <button type="submit" class="primary-btn">ثبت / به‌روزرسانی سقف اعتبار</button>
+    </form>
+    <div id="creditList" class="my-products"></div>
+
+    <h2 class="section-title">درخواست‌های واریز در انتظار تایید</h2>
+    <div id="creditSettlementsList" class="my-products"></div>
+  </div>
+
   <!-- تب گزارش -->
   <div class="tab-pane hidden" id="tab-report">
     <div id="reportBox" class="report-box"></div>
@@ -154,12 +185,24 @@
   </div>
 </section>
 
+
+<!-- اعلان بزرگ سفارش جدید -->
+<div class="neworder-overlay" id="neworderOverlay"></div>
+<div class="neworder-popup" id="neworderPopup">
+  <div class="neworder-bell">🔔</div>
+  <div class="neworder-title">سفارش جدید!</div>
+  <div class="neworder-sub" id="neworderSub">یک سفارش تازه ثبت شد</div>
+  <button class="neworder-btn" id="neworderViewBtn">مشاهده سفارش</button>
+  <button class="neworder-close" id="neworderCloseBtn">✕</button>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="jalali.js"></script>
 <script src="cities.js"></script>
 <script src="supplier.js"></script>
 </body>

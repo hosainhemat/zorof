@@ -20,7 +20,52 @@
     <span class="brand-mark">ظ</span>
     <span class="brand-name">پنل مدیر</span>
   </div>
+  <button class="icon-round" id="adminMenuBtn" aria-label="منو">☰</button>
 </header>
+
+<!-- منوی بخش‌ها (کشویی از راست) -->
+<div class="side-overlay" id="adminSideOverlay"></div>
+<div class="side-menu" id="adminSideMenu">
+  <div class="side-menu-head">
+    <h2>بخش‌ها</h2>
+    <button class="icon-btn" id="closeAdminSideMenu">✕</button>
+  </div>
+  <div class="side-category-list" id="adminMenuList">
+    <button class="side-cat-item accordion-head" data-tab="products">تایید محصولات <span class="accordion-arrow">‹</span></button>
+    <div class="accordion-body hidden">
+      <button class="side-cat-item sub" data-tab="products" data-status="pending">در انتظار تایید</button>
+      <button class="side-cat-item sub" data-tab="products" data-status="approved">تایید شده</button>
+      <button class="side-cat-item sub" data-tab="products" data-status="rejected">رد شده</button>
+    </div>
+
+    <button class="side-cat-item" data-tab="categories">دسته‌بندی‌ها</button>
+
+    <button class="side-cat-item accordion-head" data-tab="suppliers">تامین‌کنندگان <span class="accordion-arrow">‹</span></button>
+    <div class="accordion-body hidden">
+      <button class="side-cat-item sub" data-tab="suppliers" data-status="pending">در انتظار تایید</button>
+      <button class="side-cat-item sub" data-tab="suppliers" data-status="approved">تایید شده</button>
+      <button class="side-cat-item sub" data-tab="suppliers" data-status="rejected">رد شده</button>
+    </div>
+
+    <button class="side-cat-item" data-tab="customers">مشتریان</button>
+    <button class="side-cat-item" data-tab="credit">خرید اعتباری</button>
+    <button class="side-cat-item" data-tab="orders">سفارش‌ها</button>
+    <button class="side-cat-item" data-tab="inventory">موجودی</button>
+    <button class="side-cat-item" data-tab="report">گزارش</button>
+    <button class="side-cat-item" data-tab="messages">پیام‌رسانی</button>
+
+    <button class="side-cat-item accordion-head" data-tab="settings">تنظیمات <span class="accordion-arrow">‹</span></button>
+    <div class="accordion-body hidden">
+      <button class="side-cat-item sub" data-tab="settings" data-scroll="theme">ظاهر فروشگاه</button>
+      <button class="side-cat-item sub" data-tab="settings" data-scroll="bank">شماره حساب</button>
+      <button class="side-cat-item sub" data-tab="settings" data-scroll="csv">خروجی گزارش</button>
+      <button class="side-cat-item sub" data-tab="settings" data-scroll="reset">بازنشانی</button>
+    </div>
+  </div>
+  <div class="side-menu-foot">
+    <a href="accounting.html">حساب‌داری</a>
+  </div>
+</div>
 
 <!-- ورود -->
 <section id="authSection" class="auth-box">
@@ -52,17 +97,10 @@
     <button id="logoutBtn" class="text-btn">خروج</button>
   </div>
 
-  <nav class="tabs" id="adminTabs">
-    <button class="tab-btn active" data-tab="products">تایید محصولات</button>
-    <button class="tab-btn" data-tab="categories">دسته‌بندی‌ها</button>
-    <button class="tab-btn" data-tab="suppliers">تامین‌کنندگان</button>
-    <button class="tab-btn" data-tab="customers">مشتریان</button>
-    <button class="tab-btn" data-tab="orders">سفارش‌ها</button>
-    <button class="tab-btn" data-tab="inventory">موجودی</button>
-    <button class="tab-btn" data-tab="report">گزارش</button>
-    <button class="tab-btn" data-tab="messages">پیام‌رسانی</button>
-    <button class="tab-btn" data-tab="settings">تنظیمات</button>
-  </nav>
+  <div class="content-head">
+    <button class="icon-btn" id="backToMenuBtn">→</button>
+    <h2 id="currentSectionTitle" class="section-title" style="margin:0">تایید محصولات</h2>
+  </div>
 
   <!-- تایید محصولات -->
   <div class="tab-pane" id="tab-products">
@@ -88,7 +126,16 @@
 
   <!-- مشتریان -->
   <div class="tab-pane hidden" id="tab-customers">
+    <input id="customerSearch" class="field" type="text" placeholder="جستجو با نام یا شماره...">
     <div id="customersList" class="my-products"></div>
+  </div>
+
+  <!-- خرید اعتباری -->
+  <div class="tab-pane hidden" id="tab-credit">
+    <h2 class="section-title">حساب‌های اعتباری (همه تامین‌کنندگان)</h2>
+    <div id="creditAccountsAdminList" class="my-products"></div>
+    <h2 class="section-title">واریزی‌های در انتظار تایید</h2>
+    <div id="creditSettlementsAdminList" class="my-products"></div>
   </div>
 
   <!-- سفارش‌ها -->
@@ -118,7 +165,7 @@
 
   <!-- تنظیمات -->
   <div class="tab-pane hidden" id="tab-settings">
-    <h2 class="section-title">ظاهر فروشگاه</h2>
+    <h2 class="section-title" id="settings-theme">ظاهر فروشگاه</h2>
     <div class="product-form">
       <p class="wizard-note">تم فروشگاه را برای همه بازدیدکنندگان تغییر می‌دهد (مثلاً حالت مشکی برای ایام محرم).</p>
       <select id="themeSelect" class="field">
@@ -128,12 +175,19 @@
       <button id="saveThemeBtn" class="primary-btn">اعمال تم</button>
     </div>
 
-    <h2 class="section-title">خروجی گزارش</h2>
+    <h2 class="section-title" id="settings-bank">شماره حساب برای واریز مشتریان</h2>
+    <div class="product-form">
+      <p class="wizard-note">این متن دقیقاً همان‌طور که می‌نویسید به مشتری هنگام انتخاب «واریز فیش بانکی» نشان داده می‌شود.</p>
+      <textarea id="bankInfoInput" class="field" rows="2" placeholder="مثلاً: شماره کارت ۶۰۳۷-....، به نام ...، یا شبا IR..."></textarea>
+      <button id="saveBankInfoBtn" class="primary-btn">ذخیره</button>
+    </div>
+
+    <h2 class="section-title" id="settings-csv">خروجی گزارش</h2>
     <div class="product-form">
       <button id="exportCsvBtn" class="secondary-btn">دانلود گزارش سفارش‌ها (CSV)</button>
     </div>
 
-    <h2 class="section-title">بازنشانی داده‌های آزمایشی</h2>
+    <h2 class="section-title" id="settings-reset">بازنشانی داده‌های آزمایشی</h2>
     <div class="product-form">
       <p class="wizard-note">هرکدام را جدا پاک کنید، یا همه را یک‌جا با «بازنشانی کامل».</p>
       <button data-reset="products" class="secondary-btn">پاک‌کردن همه محصولات</button>
@@ -144,12 +198,24 @@
   </div>
 </section>
 
+
+<!-- اعلان بزرگ سفارش جدید -->
+<div class="neworder-overlay" id="neworderOverlay"></div>
+<div class="neworder-popup" id="neworderPopup">
+  <div class="neworder-bell">🔔</div>
+  <div class="neworder-title">سفارش جدید!</div>
+  <div class="neworder-sub" id="neworderSub">یک سفارش تازه ثبت شد</div>
+  <button class="neworder-btn" id="neworderViewBtn">مشاهده سفارش</button>
+  <button class="neworder-close" id="neworderCloseBtn">✕</button>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="jalali.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>

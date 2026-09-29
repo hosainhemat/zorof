@@ -238,7 +238,7 @@ function renderStatement() {
     const row = document.createElement("div");
     row.className = "acc-row";
     row.innerHTML = `
-      <div class="acc-row-top"><span>${t.date || ""}</span><span>${t.desc || ""}</span></div>
+      <div class="acc-row-top"><span>${toJalaliString(t.date)}</span><span>${t.desc || ""}</span></div>
       <div class="acc-row-main">
         <span>${t.debit ? `<span class="acc-amt-debit">بدهکار: ${toman(t.debit)}</span>` : ""}${t.credit ? `<span class="acc-amt-credit">بستانکار: ${toman(t.credit)}</span>` : ""}</span>
         <button data-act="del" style="border:none;background:none;color:var(--muted);cursor:pointer">✕</button>
@@ -262,22 +262,61 @@ function listenChecks() {
   }, err => console.error(err));
 }
 
-document.getElementById("checkForm").onsubmit = (e) => {
+let chkPhotoFile = null;
+const chkImageRow = document.getElementById("chkImageRow");
+document.getElementById("chkAddImageBtn").onclick = () => document.getElementById("chkPhotoInput").click();
+document.getElementById("chkPhotoInput").onchange = () => {
+  const file = document.getElementById("chkPhotoInput").files[0];
+  if (!file) return;
+  chkPhotoFile = file;
+  const reader = new FileReader();
+  reader.onload = e => { chkImageRow.innerHTML = `<div class="image-slot"><img src="${e.target.result}"></div>`; };
+  reader.readAsDataURL(file);
+};
+
+async function uploadToCloudinary(file) {
+  const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(url, { method: "POST", body: formData });
+  if (!res.ok) throw new Error("آپلود عکس ناموفق بود");
+  return (await res.json()).secure_url;
+}
+
+document.getElementById("checkForm").onsubmit = async (e) => {
   e.preventDefault();
   const personId = document.getElementById("chkPersonSelect").value;
   if (!personId) { showToast("اول یک شخص انتخاب یا اضافه کنید"); return; }
   const amount = Number(document.getElementById("chkAmount").value);
   const dueDate = document.getElementById("chkDue").value;
   if (!amount || !dueDate) { showToast("مبلغ و تاریخ سررسید را وارد کنید"); return; }
-  db.collection("acc_checks").add({
-    personId,
-    direction: document.getElementById("chkDirection").value,
-    amount,
-    checkNumber: document.getElementById("chkNumber").value.trim(),
-    bank: document.getElementById("chkBank").value.trim(),
-    dueDate, status: "pending",
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-  }).then(() => { showToast("چک ثبت شد"); e.target.reset(); });
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true; submitBtn.textContent = "در حال ذخیره...";
+  try {
+    let photoUrl = null;
+    if (chkPhotoFile) photoUrl = await uploadToCloudinary(chkPhotoFile);
+    await db.collection("acc_checks").add({
+      personId,
+      direction: document.getElementById("chkDirection").value,
+      amount,
+      checkNumber: document.getElementById("chkNumber").value.trim(),
+      sayadNumber: document.getElementById("chkSayad").value.trim(),
+      bank: document.getElementById("chkBank").value.trim(),
+      dueDate, status: "pending",
+      photoUrl,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    showToast("چک ثبت شد");
+    e.target.reset();
+    chkPhotoFile = null;
+    chkImageRow.innerHTML = "";
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || "خطا در ثبت چک");
+  } finally {
+    submitBtn.disabled = false; submitBtn.textContent = "ثبت چک";
+  }
 };
 
 function renderCheckStatusFilters() {
@@ -311,7 +350,7 @@ function renderChecksList() {
       <div class="ph">${c.direction === "received" ? "⬇️" : "⬆️"}</div>
       <div class="my-product-info">
         <div class="my-product-name">${personName(c.personId)} — ${toman(c.amount)}</div>
-        <div class="my-product-price">${c.direction === "received" ? "دریافتی" : "پرداختی"} · سررسید ${c.dueDate} · ${c.bank || ""} ${c.checkNumber ? "#" + c.checkNumber : ""}</div>
+        <div class="my-product-price">${c.direction === "received" ? "دریافتی" : "پرداختی"} · سررسید ${toJalaliString(c.dueDate)} · ${c.bank || ""} ${c.checkNumber ? "#" + c.checkNumber : ""}</div>
       </div>
       <div class="my-product-actions">${actions}<button data-act="delete">حذف</button></div>
     `;
@@ -340,7 +379,7 @@ function renderDue() {
       <div class="ph">${c.direction === "received" ? "⬇️" : "⬆️"}</div>
       <div class="my-product-info">
         <div class="my-product-name">${personName(c.personId)} — ${toman(c.amount)}</div>
-        <div class="due-date">${overdue ? "⚠️ سررسید گذشته: " : "سررسید: "}${c.dueDate}</div>
+        <div class="due-date">${overdue ? "⚠️ سررسید گذشته: " : "سررسید: "}${toJalaliString(c.dueDate)}</div>
       </div>
     `;
     el.appendChild(row);

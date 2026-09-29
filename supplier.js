@@ -157,9 +157,43 @@ function translateAuthError(err) {
   return map[err.code] || "خطایی رخ داد: " + err.message;
 }
 
+let supplierDocUnsub = null;
+let panelStarted = false;
+
+function startApprovedPanel(user) {
+  if (panelStarted) return;
+  panelStarted = true;
+  panelSection.classList.remove("hidden");
+  welcomeName.textContent = user.displayName || supplierProfile.phone || "";
+  supplierCitySelect.value = supplierProfile.city || "";
+  minOrderInput.value = supplierProfile.minOrder || "";
+  deliveryFeeInput.value = supplierProfile.deliveryFee || "";
+  if (supplierProfile.lat != null) locationStatusEl.textContent = "موقعیت مکانی دقیق ثبت شده ✅";
+  listenCategories();
+  listenMyProducts();
+  listenOrders();
+  listenAcceptedOrders();
+  listenTrustedCustomers();
+  listenCreditAccounts();
+  renderReport();
+  listenMessages();
+}
+
+let profileUnsub = null;
+let routedStatus = null;
+
+function showPendingDiag(user, status) {
+  const el = document.getElementById("pendingDiag");
+  if (el) el.textContent = "شناسه حساب: " + user.uid.slice(-6) + " · وضعیت روی سرور: " + status +
+    " · نسخه برنامه: " + (typeof APP_VERSION !== "undefined" ? APP_VERSION : "؟");
+}
+document.getElementById("pendingRefreshBtn").onclick = () => location.reload();
+
 auth.onAuthStateChanged(user => {
   currentUser = user;
   if (ordersUnsub) { ordersUnsub(); ordersUnsub = null; }
+  if (profileUnsub) { profileUnsub(); profileUnsub = null; }
+  routedStatus = null;
   loginView.classList.add("hidden");
   registerStep1.classList.add("hidden");
   registerStep2.classList.add("hidden");
@@ -169,9 +203,16 @@ auth.onAuthStateChanged(user => {
   panelSection.classList.add("hidden");
   if (!user) { showAuthView(loginView); return; }
 
-  db.collection("suppliers").doc(user.uid).get().then(doc => {
+  // وضعیت حساب به‌صورت زنده دنبال می‌شود: به‌محض اینکه مدیر تایید کند، صفحه خودش عوض می‌شود
+  profileUnsub = db.collection("suppliers").doc(user.uid).onSnapshot(doc => {
     supplierProfile = doc.exists ? doc.data() : { status: "pending" };
-    if (supplierProfile.status === "approved") {
+    const status = supplierProfile.status || "pending";
+
+    if (routedStatus !== null && routedStatus !== status) { location.reload(); return; }
+    if (routedStatus !== null) return; // همان وضعیت قبلی؛ فقط اطلاعات پروفایل به‌روز شد
+    routedStatus = status;
+
+    if (status === "approved") {
       panelSection.classList.remove("hidden");
       welcomeName.textContent = user.displayName || supplierProfile.phone || "";
       supplierCitySelect.value = supplierProfile.city || "";
@@ -181,17 +222,24 @@ auth.onAuthStateChanged(user => {
       listenCategories();
       listenMyProducts();
       listenOrders();
+      listenAcceptedOrders();
+      listenTrustedCustomers();
       renderReport();
       listenMessages();
-    } else if (supplierProfile.status === "rejected") {
+    } else if (status === "rejected") {
       pendingSection.classList.remove("hidden");
       pendingSection.querySelector("h1").textContent = "درخواست شما رد شد";
       pendingSection.querySelector(".auth-sub").textContent = "متاسفانه درخواست همکاری شما تایید نشد. برای پیگیری پیام بفرستید.";
+      showPendingDiag(user, status);
       listenPendingMessages();
     } else {
       pendingSection.classList.remove("hidden");
+      showPendingDiag(user, status);
       listenPendingMessages();
     }
+  }, err => {
+    console.error(err);
+    showToast("خطا در خواندن وضعیت حساب: " + (err.code || err.message));
   });
 });
 
@@ -335,6 +383,7 @@ productForm.onsubmit = async (e) => {
       showToast("محصول ویرایش شد و برای تایید مجدد ارسال شد");
     } else {
       data.status = "pending";
+      data.available = true;
       data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
       await db.collection("products").add(data);
       showToast("محصول ثبت شد — پس از تایید مدیر نمایش داده می‌شود");
@@ -371,6 +420,7 @@ function renderMyProducts(items) {
   myProductsEl.innerHTML = "";
   items.forEach(p => {
     const img = (p.images && p.images[0]) || p.imageUrl;
+    const available = p.available !== false;
     const row = document.createElement("div");
     row.className = "my-product";
     row.innerHTML = `
@@ -379,13 +429,19 @@ function renderMyProducts(items) {
         <div class="my-product-name">${p.name}${p.featured ? " 🔥" : ""}</div>
         <div class="my-product-price">${toman(p.price)} · موجودی: ${p.stock ?? 0}</div>
         ${statusBadge(p.status)}
+        ${!available ? `<span class="status-badge badge-rejected">اتمام موجودی در بازار</span>` : ""}
       </div>
       <div class="my-product-actions">
         <button data-act="edit">ویرایش</button>
+        <button data-act="toggle-avail">${available ? "اتمام موجودی در بازار" : "بازگرداندن به موجود"}</button>
         <button data-act="delete">حذف</button>
       </div>
     `;
     row.querySelector('[data-act="edit"]').onclick = () => startEdit(p);
+    row.querySelector('[data-act="toggle-avail"]').onclick = () => {
+      db.collection("products").doc(p.id).update({ available: !available })
+        .then(() => showToast(available ? "به‌عنوان اتمام موجودی علامت خورد" : "دوباره موجود شد"));
+    };
     row.querySelector('[data-act="delete"]').onclick = () => deleteProduct(p.id, p.name);
     myProductsEl.appendChild(row);
   });
@@ -425,15 +481,90 @@ function isVisibleToMe(order) {
   return true;
 }
 
+
+// -------------------- اعلان بزرگ سفارش جدید --------------------
+let neworderFirstLoad = true;
+function showNewOrderPopup(order) {
+  const overlay = document.getElementById("neworderOverlay");
+  const popup = document.getElementById("neworderPopup");
+  const sub = document.getElementById("neworderSub");
+  if (!overlay || !popup) return;
+  const itemsText = (order.items || []).map(it => `${it.name} × ${it.qty}`).join("، ");
+  sub.textContent = (itemsText || "سفارش تازه") + " — " + toman(order.total);
+  overlay.classList.add("open");
+  popup.classList.add("open");
+}
+function closeNewOrderPopup() {
+  document.getElementById("neworderOverlay").classList.remove("open");
+  document.getElementById("neworderPopup").classList.remove("open");
+}
+document.getElementById("neworderOverlay").onclick = closeNewOrderPopup;
+document.getElementById("neworderCloseBtn").onclick = closeNewOrderPopup;
+document.getElementById("neworderViewBtn").onclick = () => {
+  closeNewOrderPopup();
+  const ordersTabBtn = document.querySelector('[data-tab="orders"]');
+  if (ordersTabBtn) ordersTabBtn.click();
+};
+
 function listenOrders() {
   if (ordersUnsub) ordersUnsub();
+  neworderFirstLoad = true;
   ordersUnsub = db.collection("orders")
     .where("queue", "array-contains", currentUser.uid)
-    .where("status", "==", "pending")
     .onSnapshot(snapshot => {
-      window._myOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (!neworderFirstLoad) {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const o = { id: change.doc.id, ...change.doc.data() };
+            if (o.status === "pending" && isVisibleToMe(o)) showNewOrderPopup(o);
+          }
+        });
+      }
+      neworderFirstLoad = false;
+      window._myOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(o => o.status === "pending");
       renderOrders();
     }, err => { console.error(err); ordersListEl.innerHTML = `<p class="my-empty">خطا در بارگذاری سفارش‌ها.</p>`; });
+}
+
+const stockCache = {};
+function getProductStock(productId) {
+  if (stockCache[productId] !== undefined) return Promise.resolve(stockCache[productId]);
+  return db.collection("products").doc(productId).get().then(doc => {
+    const stock = doc.exists ? (doc.data().stock ?? null) : null;
+    stockCache[productId] = stock;
+    return stock;
+  }).catch(() => null);
+}
+
+function paymentSummaryHtml(o) {
+  if (!o.paymentMethod) return "";
+  const statusMap = { pending_review: "در انتظار بررسی", approved: "تایید شده", rejected: "رد شده" };
+  const statusCls = { pending_review: "badge-pending", approved: "badge-approved", rejected: "badge-rejected" };
+  let details = "";
+  if (o.paymentMethod === "receipt") {
+    details = `<div>روش پرداخت: فیش واریزی</div>`;
+  } else {
+    details = `
+      <div>روش پرداخت: چک — بانک ${o.checkBank || "—"} · سریال ${o.checkSerial || "—"}</div>
+      <div>شماره صیادی: ${o.checkSayad || "—"} · سررسید: ${window.Jalali ? Jalali.isoToShamsi(o.checkDueDate) : o.checkDueDate} · مبلغ: ${toman(o.checkAmount)}</div>
+    `;
+  }
+  const photoUrl = o.receiptImageUrl || o.checkImageUrl;
+  const rejectReason = o.paymentStatus === "rejected" && o.paymentRejectionReason ? `<div class="order-shortfall">دلیل رد: ${o.paymentRejectionReason}</div>` : "";
+  return `
+    <div class="payment-box">
+      <div class="order-head"><span class="status-badge ${statusCls[o.paymentStatus]}">پرداخت: ${statusMap[o.paymentStatus] || o.paymentStatus}</span></div>
+      ${details}
+      ${photoUrl ? `<a href="${photoUrl}" target="_blank" class="payment-photo-link">مشاهده عکس ${o.paymentMethod === "receipt" ? "فیش" : "چک"}</a>` : ""}
+      ${rejectReason}
+      ${o.paymentMethod === "check" && o.paymentStatus === "approved" ? `<div class="sayad-tag">وضعیت صیادی: ${o.sayadReceived ? "دریافت شد ✅" : "دریافت نشده"}</div>` : ""}
+      ${o.paymentStatus === "pending_review" ? `
+        <div class="order-actions">
+          <button data-act="approve-payment" class="primary-action">تایید پرداخت</button>
+          <button data-act="reject-payment">رد پرداخت</button>
+        </div>` : ""}
+    </div>
+  `;
 }
 
 function renderOrders() {
@@ -446,33 +577,74 @@ function renderOrders() {
     const noteText = (myIndex + 1 < o.queue.length)
       ? "این سفارش فقط برای شماست. اگر رد کنید، بلافاصله به نزدیک‌ترین تامین‌کننده بعدی نمایش داده می‌شود."
       : "شما آخرین گزینه برای این سفارش هستید.";
+    const paymentApproved = !o.paymentMethod || o.paymentStatus === "approved";
     const card = document.createElement("div");
     card.className = "order-card";
     card.innerHTML = `
       <div class="order-head"><span class="status-badge badge-pending">سفارش جدید</span></div>
       <div class="order-items">${itemsText}</div>
+      <div class="order-shortfall"></div>
+      ${paymentSummaryHtml(o)}
       <div class="order-total">${toman(o.total)}</div>
       <div class="order-meta">${o.buyerAddress || o.buyerCity || ""}</div>
       <div class="order-countdown">${noteText}</div>
       <div class="order-actions">
         <a href="tel:${o.buyerPhone}">تماس با خریدار</a>
-        <button data-act="accept" class="primary-action">قبول سفارش</button>
+        <button data-act="accept" class="primary-action" ${paymentApproved ? "" : "disabled style=\"opacity:.4\""}>قبول سفارش</button>
         <button data-act="reject">رد کردن</button>
       </div>
+      ${!paymentApproved ? `<p class="wizard-note">اول باید پرداخت را تایید کنید.</p>` : ""}
     `;
-    card.querySelector('[data-act="accept"]').onclick = () => acceptOrder(o.id);
+    card.querySelector('[data-act="accept"]').onclick = () => { if (paymentApproved) acceptOrder(o.id); };
     card.querySelector('[data-act="reject"]').onclick = () => rejectOrder(o.id);
+    const approvePayBtn = card.querySelector('[data-act="approve-payment"]');
+    if (approvePayBtn) approvePayBtn.onclick = () => {
+      db.collection("orders").doc(o.id).update({ paymentStatus: "approved" }).then(() => showToast("پرداخت تایید شد"));
+    };
+    const rejectPayBtn = card.querySelector('[data-act="reject-payment"]');
+    if (rejectPayBtn) rejectPayBtn.onclick = () => {
+      const reason = prompt("دلیل رد پرداخت را بنویسید تا مشتری متوجه شود:");
+      if (!reason || !reason.trim()) return;
+      db.collection("orders").doc(o.id).update({ paymentStatus: "rejected", paymentRejectionReason: reason.trim() })
+        .then(() => showToast("پرداخت رد شد"));
+    };
     ordersListEl.appendChild(card);
+
+    // هشدار کمبود موجودی — فقط برای اطلاع خود تامین‌کننده، هیچ‌وقت برای مشتری
+    const shortfallEl = card.querySelector(".order-shortfall");
+    Promise.all((o.items || []).map(it => getProductStock(it.productId).then(stock => ({ it, stock }))))
+      .then(results => {
+        const shortages = results.filter(r => r.stock != null && r.it.qty > r.stock);
+        if (shortages.length === 0) return;
+        shortfallEl.innerHTML = shortages.map(r =>
+          `⚠️ ${r.it.name}: موجودی ثبت‌شده ${r.stock} عدد است، ${r.it.qty - r.stock} عدد کسری دارید — لطفاً تامین کنید.`
+        ).join("<br>");
+      });
   });
 }
 
 function acceptOrder(orderId) {
   const ref = db.collection("orders").doc(orderId);
+  const creditRef = db.collection("creditAccounts"); // بعداً در تراکنش با شناسه دقیق واکشی می‌شود
   db.runTransaction(async (tx) => {
     const doc = await tx.get(ref);
     if (!doc.exists) throw new Error("سفارش پیدا نشد");
     const data = doc.data();
     if (data.status !== "pending" || data.assignedTo) throw new Error("این سفارش قبلاً توسط تامین‌کننده دیگری پذیرفته شده");
+    if (data.paymentMethod && data.paymentStatus !== "approved") throw new Error("اول باید پرداخت را تایید کنید");
+
+    if (data.paymentMethod === "credit") {
+      const accId = `${data.buyerPhone}_${currentUser.uid}`;
+      const accRef = creditRef.doc(accId);
+      const accDoc = await tx.get(accRef);
+      if (!accDoc.exists) throw new Error("شما برای این مشتری اعتباری ثبت نکرده‌اید");
+      const acc = accDoc.data();
+      const used = acc.used || 0;
+      const limit = acc.limit || 0;
+      if (used + data.total > limit) throw new Error("این سفارش از سقف اعتبار باقیمانده مشتری بیشتر است");
+      tx.update(accRef, { used: used + data.total });
+    }
+
     tx.update(ref, { status: "assigned", assignedTo: currentUser.uid, assignedAt: firebase.firestore.FieldValue.serverTimestamp() });
   }).then(() => showToast("سفارش پذیرفته شد ✅"))
     .catch(err => { console.error(err); showToast(err.message || "خطا در پذیرش سفارش"); });
@@ -488,6 +660,184 @@ function rejectOrder(orderId) {
   db.collection("orders").doc(orderId).update(update)
     .then(() => showToast("سفارش رد شد"))
     .catch(err => { console.error(err); showToast("خطا در ثبت رد سفارش"); });
+}
+
+// -------------------- سفارش‌های پذیرفته‌شده من (برای وضعیت صیادی) --------------------
+let acceptedOrdersUnsub = null;
+function listenAcceptedOrders() {
+  if (acceptedOrdersUnsub) acceptedOrdersUnsub();
+  acceptedOrdersUnsub = db.collection("orders").where("assignedTo", "==", currentUser.uid)
+    .onSnapshot(snap => renderAcceptedOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)).slice(0, 50)),
+      err => console.error(err));
+}
+
+function renderAcceptedOrders(orders) {
+  const el = document.getElementById("acceptedOrdersList");
+  renderCreditSettlements(orders);
+  const checkOrders = orders.filter(o => o.paymentMethod === "check");
+  if (orders.length === 0) { el.innerHTML = `<p class="my-empty">هنوز سفارشی نپذیرفته‌اید.</p>`; return; }
+  el.innerHTML = "";
+  orders.forEach(o => {
+    const row = document.createElement("div");
+    row.className = "order-card";
+    const sayadRow = o.paymentMethod === "check"
+      ? `<div class="sayad-tag">صیادی: ${o.sayadReceived ? "دریافت شد ✅" : "دریافت نشده"}</div>
+         ${!o.sayadReceived ? `<button data-act="sayad" class="primary-action">علامت‌گذاری «صیادی دریافت شد»</button>` : ""}`
+      : "";
+    row.innerHTML = `
+      <div class="order-head"><span class="status-badge badge-approved">پذیرفته‌شده</span><span style="font-size:11px;color:var(--muted)">کد: ${o.id.slice(-8).toUpperCase()}</span></div>
+      <div class="order-items">${(o.items || []).map(it => `${it.name} × ${it.qty}`).join("، ")}</div>
+      <div class="order-total">${toman(o.total)}</div>
+      ${sayadRow}
+    `;
+    const sayadBtn = row.querySelector('[data-act="sayad"]');
+    if (sayadBtn) sayadBtn.onclick = () => db.collection("orders").doc(o.id).update({ sayadReceived: true }).then(() => showToast("ثبت شد"));
+    el.appendChild(row);
+  });
+}
+
+// -------------------- مشتریان معتبر (اجازه خرید چکی) --------------------
+let trustedUnsub = null;
+function listenTrustedCustomers() {
+  if (trustedUnsub) trustedUnsub();
+  trustedUnsub = db.collection("trustedCustomers")
+    .where("trustedBy", "array-contains", currentUser.uid)
+    .onSnapshot(snap => renderTrustedList(snap.docs.map(d => ({ phone: d.id, ...d.data() }))),
+      err => console.error(err));
+}
+
+function renderTrustedList(items) {
+  const el = document.getElementById("trustedList");
+  if (items.length === 0) { el.innerHTML = `<p class="my-empty">هنوز مشتری معتبری اضافه نکرده‌اید.</p>`; return; }
+  el.innerHTML = "";
+  items.forEach(c => {
+    const row = document.createElement("div");
+    row.className = "my-product";
+    row.innerHTML = `
+      <div class="ph">👤</div>
+      <div class="my-product-info"><div class="my-product-name">${c.phone}</div></div>
+      <div class="my-product-actions"><button data-act="remove">حذف اعتماد</button></div>
+    `;
+    row.querySelector('[data-act="remove"]').onclick = () => {
+      db.collection("trustedCustomers").doc(c.phone).update({
+        trustedBy: firebase.firestore.FieldValue.arrayRemove(currentUser.uid),
+      }).then(() => showToast("حذف شد"));
+    };
+    el.appendChild(row);
+  });
+}
+
+document.getElementById("trustedForm").onsubmit = (e) => {
+  e.preventDefault();
+  const input = document.getElementById("trustedPhoneInput");
+  const phone = input.value.trim();
+  if (!/^09\d{9}$/.test(phone)) { showToast("شماره موبایل معتبر ایرانی وارد کنید"); return; }
+  db.collection("trustedCustomers").doc(phone).set({
+    trustedBy: firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+  }, { merge: true }).then(() => { showToast("اضافه شد"); input.value = ""; });
+};
+
+// -------------------- سقف اعتبار مشتریان (خرید اعتباری) --------------------
+let creditUnsub = null;
+function listenCreditAccounts() {
+  if (creditUnsub) creditUnsub();
+  creditUnsub = db.collection("creditAccounts").where("supplierUid", "==", currentUser.uid)
+    .onSnapshot(snap => renderCreditList(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err => console.error(err));
+}
+
+function renderCreditList(items) {
+  const el = document.getElementById("creditList");
+  if (items.length === 0) { el.innerHTML = `<p class="my-empty">هنوز به مشتری‌ای اعتبار نداده‌اید.</p>`; return; }
+  el.innerHTML = "";
+  items.forEach(c => {
+    const used = c.used || 0;
+    const remaining = (c.limit || 0) - used;
+    const row = document.createElement("div");
+    row.className = "my-product";
+    row.innerHTML = `
+      <div class="ph">💳</div>
+      <div class="my-product-info">
+        <div class="my-product-name">${c.phone}</div>
+        <div class="my-product-price">سقف: ${toman(c.limit)} · مصرف‌شده: ${toman(used)} · باقیمانده: ${toman(remaining)}</div>
+      </div>
+      <div class="my-product-actions"><button data-act="remove">حذف اعتبار</button></div>
+    `;
+    row.querySelector('[data-act="remove"]').onclick = () => {
+      if (!confirm(`اعتبار «${c.phone}» حذف شود؟`)) return;
+      Promise.all([
+        db.collection("creditAccounts").doc(c.id).delete(),
+        db.collection("creditFlags").doc(c.phone).set({ suppliers: firebase.firestore.FieldValue.arrayRemove(currentUser.uid) }, { merge: true }),
+      ]).then(() => showToast("حذف شد"));
+    };
+    el.appendChild(row);
+  });
+}
+
+document.getElementById("creditForm").onsubmit = (e) => {
+  e.preventDefault();
+  const phone = normalizeIranPhone(document.getElementById("creditPhoneInput").value);
+  const limit = Number(document.getElementById("creditLimitInput").value);
+  if (!/^09\d{9}$/.test(phone)) { showToast("شماره موبایل معتبر ایرانی وارد کنید"); return; }
+  if (!limit || limit <= 0) { showToast("سقف اعتبار را وارد کنید"); return; }
+  const accId = `${phone}_${currentUser.uid}`;
+  Promise.all([
+    db.collection("creditAccounts").doc(accId).set({ phone, limit, supplierUid: currentUser.uid }, { merge: true }),
+    // فقط «وجود اعتبار» به‌صورت عمومی ثبت می‌شود، نه سقف آن
+    db.collection("creditFlags").doc(phone).set({ suppliers: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) }, { merge: true }),
+  ]).then(() => {
+    showToast("سقف اعتبار ثبت شد");
+    document.getElementById("creditForm").reset();
+  }).catch(err => { console.error(err); showToast("خطا در ثبت اعتبار"); });
+};
+
+// -------------------- تایید واریزی‌های تسویه اعتبار --------------------
+function renderCreditSettlements(orders) {
+  const el = document.getElementById("creditSettlementsList");
+  const pending = orders.filter(o => o.paymentMethod === "credit" && o.creditSettlement && o.creditSettlement.status === "pending");
+  if (pending.length === 0) { el.innerHTML = `<p class="my-empty">واریزی در انتظار تاییدی نیست.</p>`; return; }
+  el.innerHTML = "";
+  pending.forEach(o => {
+    const s = o.creditSettlement;
+    const photo = s.photoUrl ? `<a href="${s.photoUrl}" target="_blank">مشاهده عکس</a>` : "";
+    const row = document.createElement("div");
+    row.className = "order-card";
+    row.innerHTML = `
+      <div class="order-head"><span class="status-badge badge-pending">درخواست واریز اعتباری</span></div>
+      <div class="order-items">مشتری: ${o.buyerPhone} · مبلغ واریزی: ${toman(s.amount)} · روش: ${s.method === "check" ? "چک" : "فیش بانکی"}</div>
+      <div class="order-meta">${photo}</div>
+      <div class="order-actions">
+        <button data-act="approve" class="primary-action">تایید واریز</button>
+        <button data-act="reject">رد</button>
+      </div>
+    `;
+    row.querySelector('[data-act="approve"]').onclick = () => approveCreditSettlement(o);
+    row.querySelector('[data-act="reject"]').onclick = () => {
+      const reason = prompt("دلیل رد واریز را بنویسید (برای مشتری نمایش داده می‌شود):");
+      if (reason === null) return;
+      db.collection("orders").doc(o.id).update({
+        "creditSettlement.status": "rejected",
+        "creditSettlement.rejectionReason": reason.trim(),
+      }).then(() => showToast("رد شد"));
+    };
+    el.appendChild(row);
+  });
+}
+
+function approveCreditSettlement(o) {
+  const accId = `${o.buyerPhone}_${currentUser.uid}`;
+  const accRef = db.collection("creditAccounts").doc(accId);
+  const orderRef = db.collection("orders").doc(o.id);
+  db.runTransaction(async (tx) => {
+    const accDoc = await tx.get(accRef);
+    if (!accDoc.exists) throw new Error("حساب اعتباری پیدا نشد");
+    const used = accDoc.data().used || 0;
+    const newUsed = Math.max(0, used - o.creditSettlement.amount);
+    tx.update(accRef, { used: newUsed });
+    tx.update(orderRef, { "creditSettlement.status": "approved", creditSettled: true });
+  }).then(() => showToast("واریز تایید و از بدهی کسر شد"))
+    .catch(err => { console.error(err); showToast(err.message || "خطا در ثبت"); });
 }
 
 // -------------------- گزارش عملکرد من --------------------
@@ -518,12 +868,12 @@ function renderMessages(container, msgs) {
   container.scrollTop = container.scrollHeight;
 }
 function listenMessages() {
-  db.collection("messages").where("supplierId", "==", currentUser.uid).orderBy("createdAt", "asc")
-    .onSnapshot(snap => renderMessages(document.getElementById("supplierMessages"), snap.docs.map(d => d.data())));
+  db.collection("messages").where("supplierId", "==", currentUser.uid)
+    .onSnapshot(snap => renderMessages(document.getElementById("supplierMessages"), snap.docs.map(d => d.data()).sort((a, b) => ((a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : Date.now()) - (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : Date.now())))));
 }
 function listenPendingMessages() {
-  db.collection("messages").where("supplierId", "==", currentUser.uid).orderBy("createdAt", "asc")
-    .onSnapshot(snap => renderMessages(document.getElementById("pendingMessages"), snap.docs.map(d => d.data())));
+  db.collection("messages").where("supplierId", "==", currentUser.uid)
+    .onSnapshot(snap => renderMessages(document.getElementById("pendingMessages"), snap.docs.map(d => d.data()).sort((a, b) => ((a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : Date.now()) - (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : Date.now())))));
 }
 function sendMessage(text) {
   if (!text.trim() || !currentUser) return;

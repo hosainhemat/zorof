@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="supplier.css">
 </head>
 <body>
 
@@ -123,8 +124,33 @@
     <div id="reviewItems" class="cart-items"></div>
     <input type="text" id="buyerAddress" class="field" placeholder="آدرس تقریبی (اختیاری)">
     <div class="cart-total"><span>جمع کل</span><span id="reviewTotal">۰ تومان</span></div>
-    <button class="checkout-btn" id="payBtn">پرداخت و ثبت نهایی سفارش</button>
-    <p class="cart-note">پرداخت آنلاین به‌زودی فعال می‌شود؛ فعلاً با تماس هماهنگ می‌شود.</p>
+
+    <h3 class="section-title">روش پرداخت</h3>
+    <div id="bankInfoBox" class="dev-note hidden"></div>
+
+    <label class="checkbox-row"><input type="radio" name="payMethod" value="receipt" id="payReceiptRadio" checked> واریز بانکی (فیش / کارت‌به‌کارت)</label>
+    <div id="receiptForm">
+      <button type="button" class="dashed-btn" id="receiptPhotoBtn">➕ افزودن عکس فیش واریزی (دوربین یا گالری)</button>
+      <input type="file" id="receiptPhotoInput" accept="image/*" class="hidden">
+      <div id="receiptPreviewRow" class="images-row"></div>
+    </div>
+
+    <label class="checkbox-row hidden" id="payCheckRadioRow"><input type="radio" name="payMethod" value="check" id="payCheckRadio"> پرداخت چکی (فقط برای مشتریان معتبر)</label>
+    <div id="checkForm" class="hidden">
+      <input id="checkBankInput" class="field" type="text" placeholder="نام بانک">
+      <input id="checkSerialInput" class="field" type="text" placeholder="شماره سریال چک">
+      <input id="checkSayadInput" class="field" type="text" placeholder="شماره صیادی">
+      <input id="checkDueInput" class="field" type="date" placeholder="تاریخ سررسید">
+      <input id="checkAmountInput" class="field" type="number" inputmode="numeric" placeholder="مبلغ چک (تومان)">
+      <button type="button" class="dashed-btn" id="checkPhotoBtn">➕ افزودن عکس چک (دوربین یا گالری)</button>
+      <input type="file" id="checkPhotoInput" accept="image/*" class="hidden">
+      <div id="checkPreviewRow" class="images-row"></div>
+    </div>
+
+    <label class="checkbox-row hidden" id="payCreditRadioRow"><input type="radio" name="payMethod" value="credit" id="payCreditRadio"> خرید اعتباری (بدون پرداخت فوری)</label>
+
+    <button class="checkout-btn" id="payBtn">ثبت نهایی سفارش</button>
+    <p class="cart-note">بعد از ثبت، تامین‌کننده پرداخت شما را بررسی و تایید می‌کند.</p>
   </div>
 
   <!-- مرحله ۴: موفقیت -->
@@ -154,6 +180,32 @@
   </div>
   <div id="accountLoggedIn" class="hidden">
     <p class="wizard-note">شماره شما: <b id="accountPhoneLabel"></b> <button class="text-btn" id="accountLogoutBtn">خروج</button></p>
+    <h3 class="section-title">خریدهای اعتباری من</h3>
+    <div id="myCreditOrdersList" class="my-products"></div>
+
+    <!-- فرم واریز برای یک خرید اعتباری خاص -->
+    <div id="creditRepayBox" class="product-form hidden">
+      <p class="wizard-note" id="creditRepayForLabel"></p>
+      <label class="checkbox-row"><input type="radio" name="repayMethod" value="receipt" id="repayReceiptRadio" checked> واریز بانکی (فیش)</label>
+      <label class="checkbox-row"><input type="radio" name="repayMethod" value="check" id="repayCheckRadio"> پرداخت با چک</label>
+      <div id="repayReceiptForm">
+        <button type="button" class="dashed-btn" id="repayReceiptPhotoBtn">➕ افزودن عکس فیش واریزی</button>
+        <input type="file" id="repayReceiptPhotoInput" accept="image/*" class="hidden">
+        <div id="repayReceiptPreviewRow" class="images-row"></div>
+      </div>
+      <div id="repayCheckForm" class="hidden">
+        <input id="repayCheckBankInput" class="field" type="text" placeholder="نام بانک">
+        <input id="repayCheckSerialInput" class="field" type="text" placeholder="شماره سریال چک">
+        <input id="repayCheckSayadInput" class="field" type="text" placeholder="شماره صیادی">
+        <input id="repayCheckDueInput" class="field" type="date" placeholder="تاریخ سررسید">
+        <button type="button" class="dashed-btn" id="repayCheckPhotoBtn">➕ افزودن عکس چک</button>
+        <input type="file" id="repayCheckPhotoInput" accept="image/*" class="hidden">
+        <div id="repayCheckPreviewRow" class="images-row"></div>
+      </div>
+      <button class="checkout-btn" id="submitRepayBtn">ارسال برای تایید تامین‌کننده</button>
+      <button class="text-btn" id="cancelRepayBtn">انصراف</button>
+    </div>
+
     <h3 class="section-title">سفارش‌های من</h3>
     <div id="myOrdersList" class="my-products"></div>
     <h3 class="section-title">علاقه‌مندی‌های من</h3>
@@ -169,6 +221,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="jalali.js"></script>
 <script src="cities.js"></script>
 <script src="app.js"></script>
 <script>

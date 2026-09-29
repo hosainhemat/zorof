@@ -12,9 +12,19 @@ const firebaseConfig = {
   appId: "1:765982924362:web:1cefbee1e4db693c0610b3"
 };
 
+// شماره نسخه برنامه — هر بار فایل‌ها را آپدیت می‌کنید عوض می‌شود تا بتوانید ببینید گوشی نسخه جدید را گرفته یا نه
+const APP_VERSION = "2026-09-27-a";
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
+
+// نمونه جداگانه مخصوص «مشتری» (نشست ناشناس)، تا نشست مشتری با نشست مدیر/تامین‌کننده
+// در یک مرورگر قاطی نشود. برای کار کردن، در Firebase → Authentication → Sign-in method
+// گزینه Anonymous را فعال کنید (رایگان است).
+const customerApp = firebase.initializeApp(firebaseConfig, "customer");
+const customerAuth = customerApp.auth();
+const customerDb = customerApp.firestore();
 
 // -----------------------------------------------------------------
 // تنظیمات Cloudinary — برای ذخیره عکس محصولات (نیازی به کارت بانکی ندارد)

@@ -56,8 +56,9 @@ document.getElementById("adminOtpCancelBtn").onclick = () => auth.signOut();
 
 function showAdminPanel() {
   panelSection.classList.remove("hidden");
-  welcomeName.textContent = currentUser.email;
+  welcomeName.textContent = currentUser.email + " (نسخه " + APP_VERSION + ")";
   window._adminUid = currentUser.uid;
+  db.collection("settings").doc("site").set({ adminUid: currentUser.uid }, { merge: true }).catch(() => {});
 
   renderProductStatusFilters();
   listenProducts();
@@ -65,6 +66,7 @@ function showAdminPanel() {
   renderSupplierStatusFilters();
   listenSuppliers();
   loadCustomers();
+  loadCreditData();
   loadAllOrders();
   loadInventory();
   loadReport();
@@ -91,14 +93,61 @@ auth.onAuthStateChanged(async (user) => {
   otpSection.classList.remove("hidden");
 });
 
-// -------------------- تب‌ها --------------------
-document.querySelectorAll("#adminTabs .tab-btn").forEach(btn => {
-  btn.onclick = () => {
-    document.querySelectorAll("#adminTabs .tab-btn").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab-pane").forEach(p => p.classList.add("hidden"));
-    btn.classList.add("active");
-    document.getElementById("tab-" + btn.dataset.tab).classList.remove("hidden");
-  };
+// -------------------- منوی بخش‌ها (کشویی) --------------------
+const SECTION_TITLES = {
+  products: "تایید محصولات", categories: "دسته‌بندی‌ها", suppliers: "تامین‌کنندگان",
+  customers: "مشتریان", credit: "خرید اعتباری", orders: "سفارش‌ها", inventory: "موجودی",
+  report: "گزارش", messages: "پیام‌رسانی", settings: "تنظیمات",
+};
+
+const adminSideOverlay = document.getElementById("adminSideOverlay");
+const adminSideMenu = document.getElementById("adminSideMenu");
+function openAdminMenu() { adminSideOverlay.classList.add("open"); adminSideMenu.classList.add("open"); }
+function closeAdminMenu() { adminSideOverlay.classList.remove("open"); adminSideMenu.classList.remove("open"); }
+document.getElementById("adminMenuBtn").onclick = openAdminMenu;
+document.getElementById("closeAdminSideMenu").onclick = closeAdminMenu;
+adminSideOverlay.onclick = closeAdminMenu;
+document.getElementById("backToMenuBtn").onclick = openAdminMenu;
+
+function selectTab(key) {
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.add("hidden"));
+  document.getElementById("tab-" + key).classList.remove("hidden");
+  document.getElementById("currentSectionTitle").textContent = SECTION_TITLES[key] || "";
+}
+
+// کلیک روی سرشاخه‌های آکاردئونی (باز/بسته کردن + رفتن به همان بخش)
+document.querySelectorAll(".accordion-head").forEach(head => {
+  head.addEventListener("click", () => {
+    const body = head.nextElementSibling;
+    head.classList.toggle("open");
+    body.classList.toggle("hidden");
+    selectTab(head.dataset.tab);
+    closeAdminMenu();
+  });
+});
+
+// کلیک روی آیتم‌های ساده (بدون زیرشاخه)
+document.querySelectorAll("#adminMenuList > .side-cat-item:not(.accordion-head)").forEach(btn => {
+  btn.addEventListener("click", () => { selectTab(btn.dataset.tab); closeAdminMenu(); });
+});
+
+// کلیک روی زیرشاخه‌ها
+document.querySelectorAll(".side-cat-item.sub").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    selectTab(btn.dataset.tab);
+    if (btn.dataset.status) {
+      if (btn.dataset.tab === "products") { activeProductStatus = btn.dataset.status; renderProductStatusFilters(); listenProducts(); }
+      if (btn.dataset.tab === "suppliers") { activeSupplierStatus = btn.dataset.status; renderSupplierStatusFilters(); renderSuppliersList(); }
+    }
+    closeAdminMenu();
+    if (btn.dataset.scroll) {
+      setTimeout(() => {
+        const target = document.getElementById("settings-" + btn.dataset.scroll);
+        if (target) target.scrollIntoView({ behavior: "smooth" });
+      }, 250);
+    }
+  });
 });
 
 // ===================== تایید محصولات =====================
@@ -117,8 +166,9 @@ function renderProductStatusFilters() {
 
 function listenProducts() {
   if (unsubProducts) unsubProducts();
-  unsubProducts = db.collection("products").where("status", "==", activeProductStatus).orderBy("createdAt", "desc")
-    .onSnapshot(snap => renderProductsList(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+  unsubProducts = db.collection("products").where("status", "==", activeProductStatus)
+    .onSnapshot(snap => renderProductsList(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => ((b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : Date.now()) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : Date.now())))),
       err => { console.error(err); document.getElementById("productsList").innerHTML = `<p class="my-empty">خطا در بارگذاری.</p>`; });
 }
 
@@ -174,11 +224,37 @@ function listenSuppliers() {
   }, err => console.error(err));
 }
 
+function reportWriteError(action, err) {
+  console.error(action, err);
+  const code = err && err.code ? err.code : "";
+  if (code === "permission-denied") {
+    showToast("❌ ذخیره نشد: دسترسی رد شد. قوانین Firestore را دوباره Publish کنید و مطمئن شوید سند admins برای حساب شما وجود دارد.");
+  } else {
+    showToast("❌ خطا در " + action + (code ? " (" + code + ")" : ""));
+  }
+}
+
+function setSupplierStatus(uid, status, okMsg) {
+  // بعد از نوشتن، مقدار را مستقیم از سرور می‌خوانیم تا مطمئن شویم واقعاً ذخیره شده
+  return db.collection("suppliers").doc(uid).update({ status })
+    .then(() => db.collection("suppliers").doc(uid).get({ source: "server" }))
+    .then(doc => {
+      if (doc.exists && doc.data().status === status) showToast(okMsg + " ✅ (روی سرور ذخیره شد)");
+      else showToast("⚠️ ذخیره شد ولی مقدار روی سرور با انتظار نمی‌خواند. صفحه را رفرش کنید.");
+    })
+    .catch(err => reportWriteError("تغییر وضعیت تامین‌کننده", err));
+}
+
 function renderSuppliersList() {
   const el = document.getElementById("suppliersList");
   const items = allSuppliersCache.filter(s => (s.status || "pending") === activeSupplierStatus);
   if (items.length === 0) { el.innerHTML = `<p class="my-empty">موردی در این دسته نیست.</p>`; return; }
   el.innerHTML = "";
+
+  // شمارش شماره‌های تکراری (ممکن است یک نفر دو بار ثبت‌نام کرده باشد و شما یکی را تایید کرده باشید و او با دیگری وارد شود)
+  const phoneCount = {};
+  allSuppliersCache.forEach(x => { if (x.phone) phoneCount[x.phone] = (phoneCount[x.phone] || 0) + 1; });
+
   items.forEach(s => {
     const row = document.createElement("div");
     row.className = "my-product";
@@ -186,66 +262,216 @@ function renderSuppliersList() {
     if (activeSupplierStatus !== "approved") actions.push(`<button data-act="approve">تایید</button>`);
     if (activeSupplierStatus !== "rejected") actions.push(`<button data-act="reject">رد کردن</button>`);
     actions.push(`<button data-act="delete">حذف</button>`);
+    const dup = s.phone && phoneCount[s.phone] > 1 ? `<div class="order-shortfall">⚠️ این شماره ${phoneCount[s.phone]} بار ثبت‌نام شده — مطمئن شوید همان حسابی را تایید می‌کنید که تامین‌کننده با آن وارد می‌شود</div>` : "";
     row.innerHTML = `
       <div class="ph">🏪</div>
       <div class="my-product-info">
         <div class="my-product-name">${s.name || "—"}</div>
         <div class="my-product-price">${s.city || "بدون شهر"}</div>
         <a class="order-phone" href="tel:${s.phone || ""}">${s.phone || "بدون شماره"}</a>
+        <div class="supplier-tag">شناسه حساب: ${s.uid.slice(-6)} · وضعیت فعلی: ${s.status || "pending"}</div>
+        ${dup}
       </div>
       <div class="my-product-actions">${actions.join("")}</div>
     `;
-    const a = row.querySelector('[data-act="approve"]'); if (a) a.onclick = () => db.collection("suppliers").doc(s.uid).update({ status: "approved" }).then(() => showToast("تامین‌کننده تایید شد"));
-    const r = row.querySelector('[data-act="reject"]'); if (r) r.onclick = () => db.collection("suppliers").doc(s.uid).update({ status: "rejected" }).then(() => showToast("رد شد"));
+    const a = row.querySelector('[data-act="approve"]'); if (a) a.onclick = () => setSupplierStatus(s.uid, "approved", "تامین‌کننده تایید شد");
+    const r = row.querySelector('[data-act="reject"]'); if (r) r.onclick = () => setSupplierStatus(s.uid, "rejected", "تامین‌کننده رد شد");
     row.querySelector('[data-act="delete"]').onclick = () => {
       if (!confirm("این تامین‌کننده حذف شود؟ (محصولاتش هم غیرفعال می‌شود)")) return;
-      db.collection("suppliers").doc(s.uid).delete().then(() => showToast("حذف شد"));
+      db.collection("suppliers").doc(s.uid).delete().then(() => showToast("حذف شد")).catch(err => reportWriteError("حذف تامین‌کننده", err));
     };
     el.appendChild(row);
   });
 }
 
+// ===================== خرید اعتباری (نظارت کامل مدیر) =====================
+function loadCreditData() {
+  db.collection("creditAccounts").onSnapshot(snap => {
+    renderCreditAccountsAdmin(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, err => console.error(err));
+
+  db.collection("orders").where("paymentMethod", "==", "credit").onSnapshot(snap => {
+    const withSettlement = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(o => o.creditSettlement && o.creditSettlement.status);
+    renderCreditSettlementsAdmin(withSettlement);
+  }, err => console.error(err));
+}
+
+function renderCreditAccountsAdmin(items) {
+  const el = document.getElementById("creditAccountsAdminList");
+  if (items.length === 0) { el.innerHTML = `<p class="my-empty">هنوز اعتباری ثبت نشده.</p>`; return; }
+  el.innerHTML = "";
+  items.forEach(c => {
+    const used = c.used || 0;
+    const remaining = (c.limit || 0) - used;
+    const row = document.createElement("div");
+    row.className = "my-product";
+    row.innerHTML = `
+      <div class="ph">💳</div>
+      <div class="my-product-info">
+        <div class="my-product-name">${c.phone}</div>
+        <div class="my-product-price">تامین‌کننده: ${supplierNameOf(c.supplierUid)} · سقف: ${toman(c.limit)} · مصرف‌شده: ${toman(used)} · باقیمانده: ${toman(remaining)}</div>
+      </div>
+    `;
+    el.appendChild(row);
+  });
+}
+
+function renderCreditSettlementsAdmin(orders) {
+  const el = document.getElementById("creditSettlementsAdminList");
+  if (orders.length === 0) { el.innerHTML = `<p class="my-empty">واریزی‌ای ثبت نشده.</p>`; return; }
+  el.innerHTML = "";
+  const statusLabel = { pending: "در انتظار بررسی تامین‌کننده", approved: "تایید و کسر شد", rejected: "رد شد" };
+  orders.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)).forEach(o => {
+    const s = o.creditSettlement;
+    const photo = s.photoUrl ? `<a href="${s.photoUrl}" target="_blank">مشاهده عکس</a>` : "";
+    const row = document.createElement("div");
+    row.className = "order-card";
+    row.innerHTML = `
+      <div class="order-head"><span class="status-badge badge-pending">${statusLabel[s.status] || s.status}</span></div>
+      <div class="order-items">مشتری: ${o.buyerPhone} · تامین‌کننده: ${supplierNameOf(o.assignedTo)} · مبلغ: ${toman(s.amount)} · روش: ${s.method === "check" ? "چک" : "فیش بانکی"}</div>
+      <div class="order-meta">${photo} ${s.rejectionReason ? "· دلیل رد: " + s.rejectionReason : ""}</div>
+    `;
+    el.appendChild(row);
+  });
+}
+
 // ===================== مشتریان =====================
+let customersCache = [];
+let customerNamesCache = {};
+
+// تبدیل مختصات GPS به نام منطقه (رایگان، بدون کلید — OpenStreetMap Nominatim)
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&accept-language=fa`);
+    const data = await res.json();
+    const a = data.address || {};
+    const area = a.suburb || a.neighbourhood || a.quarter || a.city_district || a.town || a.city || a.village || "";
+    const city = a.city || a.town || a.county || "";
+    const text = [area, city].filter((v, i, arr) => v && arr.indexOf(v) === i).join("، ");
+    return text || data.display_name || "";
+  } catch (e) {
+    console.error("reverseGeocode", e);
+    return "";
+  }
+}
+
 function loadCustomers() {
-  db.collection("orders").get().then(snap => {
+  db.collection("customers").onSnapshot(snap => {
+    customerNamesCache = {};
+    snap.docs.forEach(d => { customerNamesCache[d.id] = d.data(); });
+    renderCustomers();
+  });
+
+  db.collection("orders").get().then(async (snap) => {
     const byPhone = {};
+    const geocodeTasks = [];
+
     snap.docs.forEach(d => {
       const o = d.data();
       if (!o.buyerPhone) return;
-      if (!byPhone[o.buyerPhone]) byPhone[o.buyerPhone] = { phone: o.buyerPhone, city: o.buyerCity, count: 0, total: 0 };
+      if (!byPhone[o.buyerPhone]) byPhone[o.buyerPhone] = { phone: o.buyerPhone, locationText: "", count: 0, total: 0 };
       byPhone[o.buyerPhone].count++;
       byPhone[o.buyerPhone].total += (o.total || 0);
+
+      if (!byPhone[o.buyerPhone].locationText) {
+        if (o.buyerAddress) byPhone[o.buyerPhone].locationText = o.buyerAddress;
+        else if (o.buyerCity) byPhone[o.buyerPhone].locationText = o.buyerCity;
+        else if (o.buyerAreaText) byPhone[o.buyerPhone].locationText = o.buyerAreaText;
+        else if (o.buyerLat != null && o.buyerLng != null) {
+          geocodeTasks.push({ docId: d.id, phone: o.buyerPhone, lat: o.buyerLat, lng: o.buyerLng });
+        }
+      }
     });
-    renderCustomers(Object.values(byPhone));
+
+    customersCache = Object.values(byPhone);
+    renderCustomers();
+
+    // موقعیت‌هایی که فقط مختصات دارند، یک‌بار به نام منطقه تبدیل و روی خود سفارش ذخیره می‌شوند تا دیگر لازم نباشد دوباره پرسیده شود
+    for (const task of geocodeTasks) {
+      const text = await reverseGeocode(task.lat, task.lng);
+      if (!text) continue;
+      db.collection("orders").doc(task.docId).update({ buyerAreaText: text }).catch(() => {});
+      const c = customersCache.find(x => x.phone === task.phone);
+      if (c && !c.locationText) { c.locationText = text; renderCustomers(); }
+    }
   }).catch(err => console.error(err));
 }
 
-function renderCustomers(customers) {
+function renderCustomers() {
   const el = document.getElementById("customersList");
-  if (customers.length === 0) { el.innerHTML = `<p class="my-empty">هنوز مشتری‌ای ثبت نشده.</p>`; return; }
+  const q = (document.getElementById("customerSearch").value || "").trim();
+  let items = customersCache.map(c => ({ ...c, name: (customerNamesCache[c.phone] || {}).name || "" }));
+  if (q) items = items.filter(c => c.phone.includes(q) || c.name.includes(q));
+  items.sort((a, b) => b.total - a.total);
+
+  if (items.length === 0) { el.innerHTML = `<p class="my-empty">موردی پیدا نشد.</p>`; return; }
   el.innerHTML = "";
-  customers.sort((a, b) => b.total - a.total).forEach(c => {
+  items.forEach(c => {
     const row = document.createElement("div");
     row.className = "my-product";
     const wa = "https://wa.me/" + c.phone.replace(/^0/, "98");
     row.innerHTML = `
       <div class="ph">👤</div>
       <div class="my-product-info">
-        <div class="my-product-name">${c.phone}</div>
-        <div class="my-product-price">${c.city || "—"} · ${c.count} سفارش · ${toman(c.total)}</div>
+        <div class="my-product-name">${c.name || "بدون نام"}</div>
+        <div class="my-product-price">${c.phone} · ${c.locationText || "بدون موقعیت"}</div>
+        <div class="supplier-tag">${c.count} سفارش · ${toman(c.total)}</div>
       </div>
       <div class="my-product-actions">
+        <button data-act="editname">ویرایش نام</button>
         <a href="tel:${c.phone}">تماس</a>
         <a href="${wa}" target="_blank">واتساپ</a>
       </div>
     `;
+    row.querySelector('[data-act="editname"]').onclick = () => {
+      const newName = prompt("نام این مشتری:", c.name || "");
+      if (newName === null) return;
+      db.collection("customers").doc(c.phone).set({ name: newName.trim(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        .then(() => showToast("نام ذخیره شد"))
+        .catch(err => reportWriteError("ذخیره نام مشتری", err));
+    };
     el.appendChild(row);
   });
 }
+document.getElementById("customerSearch").oninput = renderCustomers;
 
 // ===================== سفارش‌ها (نظارت کامل) =====================
+
+// -------------------- اعلان بزرگ سفارش جدید --------------------
+let neworderFirstLoad = true;
+function showNewOrderPopup(order) {
+  const overlay = document.getElementById("neworderOverlay");
+  const popup = document.getElementById("neworderPopup");
+  const sub = document.getElementById("neworderSub");
+  if (!overlay || !popup) return;
+  const itemsText = (order.items || []).map(it => `${it.name} × ${it.qty}`).join("، ");
+  sub.textContent = (itemsText || "سفارش تازه") + " — " + toman(order.total);
+  overlay.classList.add("open");
+  popup.classList.add("open");
+}
+function closeNewOrderPopup() {
+  document.getElementById("neworderOverlay").classList.remove("open");
+  document.getElementById("neworderPopup").classList.remove("open");
+}
+document.getElementById("neworderOverlay").onclick = closeNewOrderPopup;
+document.getElementById("neworderCloseBtn").onclick = closeNewOrderPopup;
+document.getElementById("neworderViewBtn").onclick = () => {
+  closeNewOrderPopup();
+  const ordersTabBtn = document.querySelector('#adminMenuList [data-tab="orders"]') || document.querySelector('[data-tab="orders"]');
+  if (ordersTabBtn) ordersTabBtn.click();
+};
+
 function loadAllOrders() {
+  neworderFirstLoad = true;
   db.collection("orders").orderBy("createdAt", "desc").limit(100).onSnapshot(snap => {
+    if (!neworderFirstLoad) {
+      snap.docChanges().forEach(change => {
+        if (change.type === "added") showNewOrderPopup({ id: change.doc.id, ...change.doc.data() });
+      });
+    }
+    neworderFirstLoad = false;
     renderAllOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }, err => console.error(err));
 }
@@ -279,12 +505,36 @@ function renderAllOrders(orders) {
     let unclaimedBtn = "";
     if (o.status === "unclaimed") unclaimedBtn = `<button data-act="claim" class="primary-action">تامین دستی توسط من</button>`;
 
+    // نمایش کامل روش پرداخت برای مدیر — چیزی پنهان نیست
+    const payStatusLabel = { pending_review: "در انتظار بررسی تامین‌کننده", approved: "تایید شده", rejected: "رد شده" };
+    let paymentBox = "";
+    if (o.paymentMethod) {
+      const photoUrl = o.receiptImageUrl || o.checkImageUrl;
+      const methodLabel = o.paymentMethod === "check" ? "چک" : "واریز بانکی (فیش)";
+      let details = "";
+      if (o.paymentMethod === "check") {
+        details = `بانک: ${o.checkBank || "—"} · سریال: ${o.checkSerial || "—"} · صیادی: ${o.checkSayad || "—"} · سررسید: ${toJalaliString ? toJalaliString(o.checkDueDate) : (o.checkDueDate || "—")} · مبلغ: ${toman(o.checkAmount)}`;
+      }
+      const rejectLine = (o.paymentStatus === "rejected" && o.paymentRejectionReason)
+        ? `<div class="order-shortfall">دلیل رد: ${o.paymentRejectionReason}</div>` : "";
+      const sayadLine = (o.paymentMethod === "check" && o.paymentStatus === "approved")
+        ? `<div class="sayad-tag">وضعیت صیادی: ${o.sayadReceived ? "دریافت شد ✅" : "دریافت نشده"}</div>` : "";
+      paymentBox = `
+        <div class="acc-row" style="margin-top:8px">
+          <div class="acc-row-top"><span>روش پرداخت: ${methodLabel}</span><span>${payStatusLabel[o.paymentStatus] || o.paymentStatus}</span></div>
+          ${details ? `<div class="order-meta">${details}</div>` : ""}
+          ${photoUrl ? `<img src="${photoUrl}" alt="مدرک پرداخت" style="max-width:120px;border-radius:8px;margin-top:6px">` : ""}
+          ${rejectLine}${sayadLine}
+        </div>`;
+    }
+
     row.innerHTML = `
       <div class="order-head"><span class="status-badge badge-pending">${statusMap[o.status] || o.status}</span></div>
       <div class="order-items">${(o.items || []).map(it => `${it.name} × ${it.qty}`).join("، ")}</div>
       <div class="order-total">${toman(o.total)}</div>
       <div class="order-meta">خریدار: ${o.buyerPhone} · ${o.buyerAddress || o.buyerCity || ""}</div>
       <div class="order-meta">${queueText}</div>
+      ${paymentBox}
       <div class="order-actions">${unclaimedBtn}</div>
     `;
     const claimBtn = row.querySelector('[data-act="claim"]');
@@ -310,14 +560,23 @@ function renderInventory(items) {
   items.forEach(p => {
     const row = document.createElement("div");
     row.className = "my-product";
+    const available = p.available !== false;
     const img0 = (p.images && p.images[0]) || p.imageUrl; const thumb = img0 ? `<img src="${img0}" alt="">` : `<div class="ph">🍽️</div>`;
     row.innerHTML = `
       ${thumb}
       <div class="my-product-info">
         <div class="my-product-name">${p.name}</div>
         <div class="my-product-price">موجودی: ${p.stock ?? "—"} · تامین‌کننده: ${p.supplierName || "—"}</div>
+        ${!available ? `<span class="status-badge badge-rejected">اتمام موجودی در بازار</span>` : ""}
+      </div>
+      <div class="my-product-actions">
+        <button data-act="toggle-avail">${available ? "اتمام موجودی" : "بازگرداندن"}</button>
       </div>
     `;
+    row.querySelector('[data-act="toggle-avail"]').onclick = () => {
+      db.collection("products").doc(p.id).update({ available: !available })
+        .then(() => showToast(available ? "به‌عنوان اتمام موجودی علامت خورد" : "دوباره موجود شد"));
+    };
     el.appendChild(row);
   });
 }
@@ -385,11 +644,12 @@ function setupMessaging() {
 function openMessageThread(supplierId) {
   if (unsubMessages) unsubMessages();
   if (!supplierId) return;
-  unsubMessages = db.collection("messages").where("supplierId", "==", supplierId).orderBy("createdAt", "asc")
+  unsubMessages = db.collection("messages").where("supplierId", "==", supplierId)
     .onSnapshot(snap => {
       const container = document.getElementById("adminMessages");
       container.innerHTML = "";
-      snap.docs.forEach(d => {
+      const sortedDocs = snap.docs.slice().sort((a, b) => ((a.data().createdAt && a.data().createdAt.toMillis ? a.data().createdAt.toMillis() : Date.now()) - (b.data().createdAt && b.data().createdAt.toMillis ? b.data().createdAt.toMillis() : Date.now())));
+      sortedDocs.forEach(d => {
         const m = d.data();
         const bubble = document.createElement("div");
         bubble.className = "msg-bubble " + (m.sender === "admin" ? "me" : "them");
@@ -447,15 +707,30 @@ document.getElementById("saveThemeBtn").onclick = () => {
     .then(() => showToast("تم فروشگاه اعمال شد"));
 };
 
+db.collection("settings").doc("site").get().then(doc => {
+  if (doc.exists) document.getElementById("bankInfoInput").value = doc.data().bankInfo || "";
+}).catch(() => {});
+
+document.getElementById("saveBankInfoBtn").onclick = () => {
+  const bankInfo = document.getElementById("bankInfoInput").value.trim();
+  db.collection("settings").doc("site").set({ bankInfo }, { merge: true })
+    .then(() => showToast("شماره حساب ذخیره شد"));
+};
+
 // ===================== تنظیمات: خروجی CSV =====================
 document.getElementById("exportCsvBtn").onclick = async () => {
   const snap = await db.collection("orders").orderBy("createdAt", "desc").get();
-  const rows = [["کد سفارش", "تاریخ", "اقلام", "مبلغ", "شماره خریدار", "وضعیت", "تامین‌کننده"]];
+  const rows = [["کد سفارش", "تاریخ", "اقلام", "مبلغ", "شماره خریدار", "وضعیت سفارش", "تامین‌کننده", "روش پرداخت", "وضعیت پرداخت", "دلیل رد پرداخت"]];
+  const payLabel = { receipt: "فیش بانکی", check: "چک" };
+  const payStatusLabel = { pending_review: "در انتظار بررسی", approved: "تایید شده", rejected: "رد شده" };
   snap.docs.forEach(d => {
     const o = d.data();
     const date = o.createdAtMs ? new Date(o.createdAtMs).toLocaleString("fa-IR") : "";
     const itemsText = (o.items || []).map(it => `${it.name} x${it.qty}`).join(" / ");
-    rows.push([d.id, date, itemsText, o.total || 0, o.buyerPhone || "", o.status || "", supplierNameOf(o.assignedTo || "")]);
+    rows.push([
+      d.id, date, itemsText, o.total || 0, o.buyerPhone || "", o.status || "", supplierNameOf(o.assignedTo || ""),
+      payLabel[o.paymentMethod] || "—", payStatusLabel[o.paymentStatus] || "—", o.paymentRejectionReason || "",
+    ]);
   });
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });

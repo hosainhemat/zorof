@@ -46,9 +46,18 @@ function distanceKm(lat1, lng1, lat2, lng2) {
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme === "black" ? "dark" : "light");
 }
-db.collection("settings").doc("site").onSnapshot(doc => {
+let siteAdminUid = null;
+customerDb.collection("settings").doc("site").onSnapshot(doc => {
   applyTheme(doc.exists ? (doc.data().theme || "color") : "color");
+  siteAdminUid = doc.exists ? (doc.data().adminUid || null) : null;
 }, () => applyTheme("color"));
+
+// نشست ناشناس مشتری: فقط برای اینکه بتواند تاریخچه سفارش‌های همین دستگاه را ببیند
+let customerUid = null;
+const customerReady = customerAuth.signInAnonymously()
+  .then(cred => { customerUid = cred.user.uid; })
+  .catch(err => console.warn("Anonymous auth غیرفعال است:", err.code));
+customerAuth.onAuthStateChanged(u => { if (u) customerUid = u.uid; });
 
 // -------------------- جستجو --------------------
 const searchBtn = document.getElementById("searchBtn");
@@ -100,7 +109,7 @@ function renderCategoryUI() {
 }
 
 function listenCategories() {
-  db.collection("categories").orderBy("order", "asc").onSnapshot(snap => {
+  customerDb.collection("categories").orderBy("order", "asc").onSnapshot(snap => {
     CATEGORIES = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderCategoryUI();
   }, err => console.error(err));
@@ -205,7 +214,9 @@ function renderGrid() {
     if (p._distance != null) tag = `<div class="distance-tag">${p._distance < 1 ? "کمتر از ۱" : p._distance.toFixed(1)} کیلومتر با شما فاصله دارد</div>`;
     else if (p.supplierCity) tag = `<div class="distance-tag">${p.supplierCity}</div>`;
 
-    const outOfStock = (p.stock != null && p.stock <= 0);
+    // مهم: موجودی عددی هرگز به مشتری نشان داده نمی‌شود و مانع خرید نمی‌شود.
+    // فقط وقتی تامین‌کننده صریحاً «اتمام موجودی در بازار» را بزند، این پیام دیده می‌شود.
+    const outOfStock = (p.available === false);
     const addBtn = outOfStock ? `<button class="add-btn" disabled style="opacity:.4">✕</button>` : `<button class="add-btn" aria-label="افزودن">+</button>`;
     const stockTag = outOfStock ? `<div class="stock-tag out">ناموجود</div>` : "";
     const isFav = favorites.includes(p.id);
@@ -329,15 +340,101 @@ function renderReview() {
     reviewItemsEl.appendChild(row);
   });
   reviewTotalEl.textContent = toman(total);
+  checkTrustForCheckPayment();
+  checkCreditEligibility();
+  loadBankInfo();
+}
+
+// -------------------- روش پرداخت --------------------
+let receiptPhotoFile = null;
+let checkPhotoFile = null;
+
+function loadBankInfo() {
+  customerDb.collection("settings").doc("site").get().then(doc => {
+    const info = doc.exists ? doc.data().bankInfo : "";
+    const box = document.getElementById("bankInfoBox");
+    if (info) { box.textContent = "شماره کارت/شبا برای واریز: " + info; box.classList.remove("hidden"); }
+    else box.classList.add("hidden");
+  }).catch(() => {});
+}
+
+function checkTrustForCheckPayment() {
+  const row = document.getElementById("payCheckRadioRow");
+  row.classList.add("hidden");
+  if (!verifiedPhone) return;
+  customerDb.collection("trustedCustomers").doc(verifiedPhone).get().then(doc => {
+    if (doc.exists && (doc.data().trustedBy || []).length > 0) row.classList.remove("hidden");
+  }).catch(() => {});
+}
+
+// خرید اعتباری: فقط بررسی می‌کنیم که آیا حداقل یک تامین‌کننده اعتباری برای این
+// شماره ثبت کرده — سقف اعتبار هرگز به مشتری نشان داده نمی‌شود.
+function checkCreditEligibility() {
+  const row = document.getElementById("payCreditRadioRow");
+  row.classList.add("hidden");
+  if (!verifiedPhone) return;
+  customerDb.collection("creditFlags").doc(verifiedPhone).get().then(doc => {
+    if (doc.exists && (doc.data().suppliers || []).length > 0) row.classList.remove("hidden");
+  }).catch(() => {});
+}
+
+document.querySelectorAll('input[name="payMethod"]').forEach(radio => {
+  radio.onchange = () => {
+    document.getElementById("receiptForm").classList.toggle("hidden", radio.value !== "receipt" || !radio.checked);
+    document.getElementById("checkForm").classList.toggle("hidden", radio.value !== "check" || !radio.checked);
+  };
+});
+document.getElementById("payReceiptRadio").onchange = () => {
+  document.getElementById("receiptForm").classList.remove("hidden");
+  document.getElementById("checkForm").classList.add("hidden");
+};
+document.getElementById("payCheckRadio").onchange = () => {
+  document.getElementById("receiptForm").classList.add("hidden");
+  document.getElementById("checkForm").classList.remove("hidden");
+};
+
+function wirePhotoPicker(btnId, inputId, previewRowId, onSelect) {
+  const btn = document.getElementById(btnId);
+  const input = document.getElementById(inputId);
+  btn.onclick = () => input.click();
+  input.onchange = () => {
+    const file = input.files[0];
+    if (!file) return;
+    onSelect(file);
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById(previewRowId).innerHTML = `<div class="image-slot"><img src="${e.target.result}"></div>`;
+    };
+    reader.readAsDataURL(file);
+  };
+}
+wirePhotoPicker("receiptPhotoBtn", "receiptPhotoInput", "receiptPreviewRow", (f) => receiptPhotoFile = f);
+wirePhotoPicker("checkPhotoBtn", "checkPhotoInput", "checkPreviewRow", (f) => checkPhotoFile = f);
+
+async function uploadToCloudinary(file) {
+  const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(url, { method: "POST", body: formData });
+  if (!res.ok) throw new Error("آپلود عکس ناموفق بود");
+  return (await res.json()).secure_url;
 }
 
 // -------------------- ثبت سفارش نهایی --------------------
-async function buildSupplierQueue() {
+async function buildSupplierQueue(payMethod) {
+  // خرید اعتباری فقط برای تامین‌کننده‌ای است که برای این شماره اعتبار تعریف کرده
+  if (payMethod === "credit") {
+    const flag = await customerDb.collection("creditFlags").doc(verifiedPhone).get();
+    return flag.exists ? (flag.data().suppliers || []) : [];
+  }
   const queue = [];
-  const adminSnap = await db.collection("admins").limit(1).get();
-  let adminUid = null;
-  if (!adminSnap.empty) { adminUid = adminSnap.docs[0].id; queue.push(adminUid); }
-  const suppliersSnap = await db.collection("suppliers").where("status", "==", "approved").get();
+  let adminUid = siteAdminUid;
+  if (!adminUid) {
+    try { const st = await customerDb.collection("settings").doc("site").get(); adminUid = st.exists ? (st.data().adminUid || null) : null; } catch (e) {}
+  }
+  if (adminUid) queue.push(adminUid);
+  const suppliersSnap = await customerDb.collection("suppliers").where("status", "==", "approved").get();
   let others = suppliersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(s => s.uid !== adminUid);
   if (buyerLocation) {
     others = others.map(s => ({ ...s, _dist: (s.lat != null) ? distanceKm(buyerLocation.lat, buyerLocation.lng, s.lat, s.lng) : 1e9 })).sort((a, b) => a._dist - b._dist);
@@ -350,32 +447,64 @@ async function buildSupplierQueue() {
 
 document.getElementById("payBtn").onclick = async () => {
   const btn = document.getElementById("payBtn");
+  const payMethod = document.querySelector('input[name="payMethod"]:checked').value;
+
+  if (payMethod === "receipt" && !receiptPhotoFile) { showToast("عکس فیش واریزی را اضافه کنید"); return; }
+  if (payMethod === "check") {
+    if (!checkPhotoFile) { showToast("عکس چک را اضافه کنید"); return; }
+    if (!document.getElementById("checkBankInput").value.trim() || !document.getElementById("checkDueInput").value) {
+      showToast("نام بانک و تاریخ سررسید چک را وارد کنید"); return;
+    }
+  }
+
   btn.disabled = true; btn.textContent = "در حال ثبت...";
   try {
-    const queue = await buildSupplierQueue();
-    if (queue.length === 0) { showToast("در حال حاضر هیچ تامین‌کننده‌ای فعال نیست"); return; }
+    await customerReady;
+    const queue = await buildSupplierQueue(payMethod);
+    if (queue.length === 0) { showToast(payMethod === "credit" ? "اعتبار شما در حال حاضر فعال نیست" : "در حال حاضر هیچ تامین‌کننده‌ای فعال نیست"); return; }
     const ids = Object.keys(cart);
     const items = ids.map(id => { const p = PRODUCTS.find(x => x.id == id); return p ? { productId: p.id, name: p.name, qty: cart[id], price: p.price } : null; }).filter(Boolean);
     const total = items.reduce((s, it) => s + it.price * it.qty, 0);
     const orderData = {
-      items, total, buyerPhone: verifiedPhone,
+      items, total, buyerPhone: verifiedPhone, buyerUid: customerUid || null,
       buyerAddress: document.getElementById("buyerAddress").value.trim() || null,
       buyerCity: selectedCity || null,
       queue, rejections: {}, assignedTo: null, status: "pending",
+      paymentMethod: payMethod, paymentStatus: "pending_review", paymentRejectionReason: null,
       createdAtMs: Date.now(), createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
     if (buyerLocation) { orderData.buyerLat = buyerLocation.lat; orderData.buyerLng = buyerLocation.lng; }
-    const ref = await db.collection("orders").add(orderData);
+
+    if (payMethod === "receipt") {
+      orderData.receiptImageUrl = await uploadToCloudinary(receiptPhotoFile);
+    } else if (payMethod === "check") {
+      orderData.checkImageUrl = await uploadToCloudinary(checkPhotoFile);
+      orderData.checkBank = document.getElementById("checkBankInput").value.trim();
+      orderData.checkSerial = document.getElementById("checkSerialInput").value.trim();
+      orderData.checkSayad = document.getElementById("checkSayadInput").value.trim();
+      orderData.checkDueDate = document.getElementById("checkDueInput").value;
+      orderData.checkAmount = Number(document.getElementById("checkAmountInput").value) || total;
+      orderData.sayadReceived = false;
+    } else if (payMethod === "credit") {
+      orderData.paymentStatus = "approved"; // خرید اعتباری نیازی به بررسی رسید ندارد؛ فقط با پذیرش تامین‌کننده و بررسی سقف اعتبار تایید می‌شود
+      orderData.creditSettled = false;
+      orderData.creditSettlement = null;
+    }
+
+    const ref = await customerDb.collection("orders").add(orderData);
 
     document.getElementById("trackingCode").textContent = ref.id.slice(-8).toUpperCase();
     showStep("success");
     cart = {}; saveCart(); renderCart();
     document.getElementById("buyerAddress").value = "";
+    receiptPhotoFile = null; checkPhotoFile = null;
+    document.getElementById("receiptPreviewRow").innerHTML = "";
+    document.getElementById("checkPreviewRow").innerHTML = "";
   } catch (err) {
     console.error(err);
     showToast("خطا در ثبت سفارش، دوباره تلاش کنید");
   } finally {
-    btn.disabled = false; btn.textContent = "پرداخت و ثبت نهایی سفارش";
+    btn.disabled = false; btn.textContent = "ثبت نهایی سفارش";
   }
 };
 document.getElementById("closeSuccessBtn").onclick = closeCartFn;
@@ -400,6 +529,7 @@ function showAccountLoggedIn() {
   document.getElementById("accountLoggedIn").classList.remove("hidden");
   document.getElementById("accountPhoneLabel").textContent = verifiedPhone;
   loadMyOrders();
+  loadMyCreditOrders();
   renderMyFavorites();
 }
 
@@ -422,10 +552,26 @@ document.getElementById("accountLogoutBtn").onclick = () => {
   showAccountLoggedOut();
 };
 
+function payLine(o) {
+  const methodMap = { receipt: "واریز بانکی (فیش)", check: "چک", credit: "خرید اعتباری" };
+  const stMap = { pending_review: "در انتظار تایید تامین‌کننده", approved: "تایید شد", rejected: "رد شد" };
+  if (!o.paymentMethod) return "";
+  const st = o.paymentMethod === "credit" ? "" : ` — ${stMap[o.paymentStatus] || ""}`;
+  const reason = (o.paymentStatus === "rejected" && o.paymentRejectionReason)
+    ? `<div class="order-shortfall">دلیل رد: ${o.paymentRejectionReason}</div>` : "";
+  return `<div class="order-meta">پرداخت: ${methodMap[o.paymentMethod] || o.paymentMethod}${st}</div>${reason}`;
+}
+
+function myOrdersQuery(extra) {
+  let q = customerDb.collection("orders").where("buyerUid", "==", customerUid || "none");
+  if (extra) q = q.where(extra[0], "==", extra[1]);
+  return q.get().then(snap => ({ empty: snap.empty, docs: snap.docs.sort((a, b) => (b.data().createdAtMs || 0) - (a.data().createdAtMs || 0)).slice(0, 30) }));
+}
+
 function loadMyOrders() {
   const el = document.getElementById("myOrdersList");
   el.innerHTML = `<p class="my-empty">در حال بارگذاری...</p>`;
-  db.collection("orders").where("buyerPhone", "==", verifiedPhone).orderBy("createdAt", "desc").limit(30).get()
+  customerReady.then(() => myOrdersQuery())
     .then(snap => {
       if (snap.empty) { el.innerHTML = `<p class="my-empty">سفارشی ثبت نکرده‌اید.</p>`; return; }
       el.innerHTML = "";
@@ -438,11 +584,101 @@ function loadMyOrders() {
           <div class="order-head"><span class="status-badge badge-pending">${statusMap[o.status] || o.status}</span><span style="font-size:11px;color:var(--muted)">کد: ${d.id.slice(-8).toUpperCase()}</span></div>
           <div class="order-items">${(o.items || []).map(it => `${it.name} × ${it.qty}`).join("، ")}</div>
           <div class="order-total">${toman(o.total)}</div>
+          ${payLine(o)}
         `;
         el.appendChild(row);
       });
     }).catch(err => { console.error(err); el.innerHTML = `<p class="my-empty">خطا در بارگذاری.</p>`; });
 }
+
+// -------------------- خریدهای اعتباری من --------------------
+let repayReceiptFile = null;
+let repayCheckFile = null;
+let currentRepayOrderId = null;
+
+function loadMyCreditOrders() {
+  const el = document.getElementById("myCreditOrdersList");
+  el.innerHTML = `<p class="my-empty">در حال بارگذاری...</p>`;
+  customerReady.then(() => myOrdersQuery(["paymentMethod", "credit"]))
+    .then(snap => {
+      if (snap.empty) { el.innerHTML = `<p class="my-empty">خرید اعتباری‌ای ندارید.</p>`; return; }
+      el.innerHTML = "";
+      snap.docs.forEach(d => {
+        const o = d.data();
+        const settled = !!o.creditSettled;
+        const pendingSettlement = o.creditSettlement && o.creditSettlement.status === "pending";
+        const rejected = o.creditSettlement && o.creditSettlement.status === "rejected";
+        const row = document.createElement("div");
+        row.className = "order-card";
+        row.innerHTML = `
+          <div class="order-head"><span class="status-badge ${settled ? "badge-approved" : "badge-pending"}">${settled ? "تسویه شده" : "پرداخت‌نشده"}</span><span style="font-size:11px;color:var(--muted)">کد: ${d.id.slice(-8).toUpperCase()}</span></div>
+          <div class="order-items">${(o.items || []).map(it => `${it.name} × ${it.qty}`).join("، ")}</div>
+          <div class="order-total">${toman(o.total)}</div>
+          ${rejected ? `<div class="order-shortfall">دلیل رد واریز قبلی: ${o.creditSettlement.rejectionReason || ""}</div>` : ""}
+          ${!settled ? `<div class="order-actions"><button data-act="repay" ${pendingSettlement ? "disabled" : ""}>${pendingSettlement ? "در انتظار تایید واریز" : "واریز برای این خرید"}</button></div>` : ""}
+        `;
+        const repayBtn = row.querySelector('[data-act="repay"]');
+        if (repayBtn) repayBtn.onclick = () => openRepayBox(d.id, o.total);
+        el.appendChild(row);
+      });
+    }).catch(err => { console.error(err); el.innerHTML = `<p class="my-empty">خطا در بارگذاری.</p>`; });
+}
+
+function openRepayBox(orderId, total) {
+  currentRepayOrderId = orderId;
+  document.getElementById("creditRepayBox").classList.remove("hidden");
+  document.getElementById("creditRepayForLabel").textContent = `واریز برای خرید به مبلغ ${toman(total)}`;
+  document.getElementById("creditRepayBox").scrollIntoView({ behavior: "smooth" });
+}
+document.getElementById("cancelRepayBtn").onclick = () => {
+  currentRepayOrderId = null;
+  document.getElementById("creditRepayBox").classList.add("hidden");
+};
+
+document.querySelectorAll('input[name="repayMethod"]').forEach(radio => {
+  radio.onchange = () => {
+    document.getElementById("repayReceiptForm").classList.toggle("hidden", radio.value !== "receipt" || !radio.checked);
+    document.getElementById("repayCheckForm").classList.toggle("hidden", radio.value !== "check" || !radio.checked);
+  };
+});
+wirePhotoPicker("repayReceiptPhotoBtn", "repayReceiptPhotoInput", "repayReceiptPreviewRow", (f) => repayReceiptFile = f);
+wirePhotoPicker("repayCheckPhotoBtn", "repayCheckPhotoInput", "repayCheckPreviewRow", (f) => repayCheckFile = f);
+
+document.getElementById("submitRepayBtn").onclick = async () => {
+  if (!currentRepayOrderId) return;
+  const method = document.querySelector('input[name="repayMethod"]:checked').value;
+  const btn = document.getElementById("submitRepayBtn");
+
+  if (method === "receipt" && !repayReceiptFile) { showToast("عکس فیش را اضافه کنید"); return; }
+  if (method === "check" && !repayCheckFile) { showToast("عکس چک را اضافه کنید"); return; }
+
+  btn.disabled = true; btn.textContent = "در حال ارسال...";
+  try {
+    const settlement = { method, status: "pending", submittedAt: Date.now() };
+    if (method === "receipt") {
+      settlement.imageUrl = await uploadToCloudinary(repayReceiptFile);
+    } else {
+      settlement.imageUrl = await uploadToCloudinary(repayCheckFile);
+      settlement.bank = document.getElementById("repayCheckBankInput").value.trim();
+      settlement.serial = document.getElementById("repayCheckSerialInput").value.trim();
+      settlement.sayad = document.getElementById("repayCheckSayadInput").value.trim();
+      settlement.dueDate = document.getElementById("repayCheckDueInput").value;
+    }
+    await customerDb.collection("orders").doc(currentRepayOrderId).update({ creditSettlement: settlement });
+    showToast("برای تایید تامین‌کننده ارسال شد");
+    document.getElementById("creditRepayBox").classList.add("hidden");
+    currentRepayOrderId = null;
+    repayReceiptFile = null; repayCheckFile = null;
+    document.getElementById("repayReceiptPreviewRow").innerHTML = "";
+    document.getElementById("repayCheckPreviewRow").innerHTML = "";
+    loadMyCreditOrders();
+  } catch (err) {
+    console.error(err);
+    showToast("خطا در ارسال، دوباره تلاش کنید");
+  } finally {
+    btn.disabled = false; btn.textContent = "ارسال برای تایید تامین‌کننده";
+  }
+};
 
 function renderMyFavorites() {
   const el = document.getElementById("myFavoritesList");
@@ -478,10 +714,11 @@ document.querySelectorAll(".bn-btn").forEach(btn => {
 
 // -------------------- خواندن زنده محصولات --------------------
 function startProductListener() {
-  if (typeof db === "undefined") { grid.innerHTML = `<p class="grid-empty">اتصال به دیتابیس برقرار نیست.</p>`; return; }
-  db.collection("products").where("status", "==", "approved").orderBy("createdAt", "desc").onSnapshot(
+  if (typeof customerDb === "undefined") { grid.innerHTML = `<p class="grid-empty">اتصال به دیتابیس برقرار نیست.</p>`; return; }
+  customerDb.collection("products").where("status", "==", "approved").onSnapshot(
     (snapshot) => {
-      PRODUCTS = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      PRODUCTS = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => ((b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : Date.now()) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : Date.now())));
       renderFeatured(); renderGrid(); renderCart();
     },
     (err) => { console.error(err); grid.innerHTML = `<p class="grid-empty">خطا در بارگذاری محصولات.</p>`; }
@@ -493,3 +730,9 @@ listenCategories();
 renderGrid();
 renderCart();
 startProductListener();
+
+// نمایش شماره نسخه در پایین صفحه
+(function () {
+  const f = document.querySelector(".site-footer");
+  if (f) { f.textContent = "نسخه " + APP_VERSION; f.style.fontSize = "11px"; f.style.color = "var(--muted)"; f.style.textAlign = "center"; }
+})();

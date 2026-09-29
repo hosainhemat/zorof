@@ -87,6 +87,7 @@
     <h2 class="section-title">ثبت سند جدید</h2>
     <form id="txnForm" class="product-form">
       <input id="txnDate" class="field" type="date">
+      <p class="wizard-note" style="margin-top:-8px">تقویم انتخاب تاریخ خودِ آیفون همیشه میلادی است (محدودیت مرورگر)، ولی همه‌جای این صفحه (لیست‌ها، گزارش‌ها) تاریخ را شمسی نشان می‌دهیم.</p>
       <input id="txnDesc" class="field" type="text" placeholder="شرح (مثلاً فروش نسیه، دریافت وجه، ...)">
       <div class="field-row">
         <input id="txnDebit" class="field" type="number" inputmode="numeric" placeholder="بدهکار (تومان)">
@@ -109,9 +110,13 @@
         <option value="issued">پرداختی (به تامین‌کننده دادیم)</option>
       </select>
       <input id="chkAmount" class="field" type="number" inputmode="numeric" placeholder="مبلغ چک (تومان)" required>
-      <input id="chkNumber" class="field" type="text" placeholder="شماره چک">
+      <input id="chkNumber" class="field" type="text" placeholder="شماره سریال چک">
+      <input id="chkSayad" class="field" type="text" placeholder="شماره صیادی">
       <input id="chkBank" class="field" type="text" placeholder="نام بانک">
       <input id="chkDue" class="field" type="date" required>
+      <div class="images-row" id="chkImageRow"></div>
+      <button type="button" id="chkAddImageBtn" class="dashed-btn">➕ افزودن عکس چک (دوربین یا گالری)</button>
+      <input type="file" id="chkPhotoInput" accept="image/*" class="hidden">
       <button type="submit" class="primary-btn">ثبت چک</button>
     </form>
 
@@ -141,6 +146,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="jalali.js"></script>
 <script src="accounting.js"></script>
 </body>
 </html>

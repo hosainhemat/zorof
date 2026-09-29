@@ -1,18 +1,17 @@
-const CACHE_NAME = "zorof-shop-v2";
+const CACHE_NAME = "zorof-shop-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
+  "./jalali.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png"
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+  e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => {}));
   self.skipWaiting();
 });
 
@@ -25,15 +24,20 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// استراتژی «اول شبکه»: همیشه سعی می‌کند نسخه تازه را از سرور بگیرد؛
-// فقط وقتی اینترنت قطع بود، از کش (نسخه قبلی) استفاده می‌کند.
+// «اول شبکه» و فقط برای فایل‌های همین سایت.
+// درخواست‌های Firebase / Cloudinary / فونت‌ها اصلاً دست‌کاری نمی‌شوند
+// (کش‌کردن آن‌ها می‌تواند باعث نمایش داده قدیمی مثل «هنوز در انتظار تایید» شود).
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+  if (url.origin !== self.location.origin) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const resClone = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, resClone));
+        if (res && res.ok) {
+          const resClone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, resClone));
+        }
         return res;
       })
       .catch(() => caches.match(e.request))
