@@ -180,7 +180,7 @@ function startApprovedPanel(user) {
 }
 
 let profileUnsub = null;
-let routedStatus = null;
+let lastRenderedStatus = null;
 
 function showPendingDiag(user, status) {
   const el = document.getElementById("pendingDiag");
@@ -189,11 +189,45 @@ function showPendingDiag(user, status) {
 }
 document.getElementById("pendingRefreshBtn").onclick = () => location.reload();
 
+function showApprovedPanel(user) {
+  pendingSection.classList.add("hidden");
+  panelSection.classList.remove("hidden");
+  welcomeName.textContent = user.displayName || supplierProfile.phone || "";
+  supplierCitySelect.value = supplierProfile.city || "";
+  minOrderInput.value = supplierProfile.minOrder || "";
+  deliveryFeeInput.value = supplierProfile.deliveryFee || "";
+  if (supplierProfile.lat != null) locationStatusEl.textContent = "موقعیت مکانی دقیق ثبت شده ✅";
+  if (lastRenderedStatus !== "approved") {
+    // این بخش‌ها فقط یک‌بار (اولین ورود به حالت تایید‌شده) راه‌اندازی می‌شوند تا شنونده تکراری ساخته نشود
+    listenCategories();
+    listenMyProducts();
+    listenOrders();
+    listenAcceptedOrders();
+    listenTrustedCustomers();
+    renderReport();
+    listenMessages();
+  }
+}
+
+function showPendingOrRejectedPanel(user, status) {
+  panelSection.classList.add("hidden");
+  pendingSection.classList.remove("hidden");
+  if (status === "rejected") {
+    pendingSection.querySelector("h1").textContent = "درخواست شما رد شد";
+    pendingSection.querySelector(".auth-sub").textContent = "متاسفانه درخواست همکاری شما تایید نشد. برای پیگیری پیام بفرستید.";
+  } else {
+    pendingSection.querySelector("h1").textContent = "در انتظار تایید";
+    pendingSection.querySelector(".auth-sub").textContent = "حساب شما ثبت شد. تا زمانی که مدیر فروشگاه حساب شما را تایید نکند، امکان افزودن محصول وجود ندارد. برای پیگیری می‌توانید پیام بفرستید.";
+  }
+  showPendingDiag(user, status);
+  if (lastRenderedStatus === null) listenPendingMessages();
+}
+
 auth.onAuthStateChanged(user => {
   currentUser = user;
   if (ordersUnsub) { ordersUnsub(); ordersUnsub = null; }
   if (profileUnsub) { profileUnsub(); profileUnsub = null; }
-  routedStatus = null;
+  lastRenderedStatus = null;
   loginView.classList.add("hidden");
   registerStep1.classList.add("hidden");
   registerStep2.classList.add("hidden");
@@ -203,40 +237,14 @@ auth.onAuthStateChanged(user => {
   panelSection.classList.add("hidden");
   if (!user) { showAuthView(loginView); return; }
 
-  // وضعیت حساب به‌صورت زنده دنبال می‌شود: به‌محض اینکه مدیر تایید کند، صفحه خودش عوض می‌شود
+  // وضعیت حساب به‌صورت زنده دنبال می‌شود — بدون رفرش صفحه، فقط بخش مربوطه آپدیت می‌شود
   profileUnsub = db.collection("suppliers").doc(user.uid).onSnapshot(doc => {
     supplierProfile = doc.exists ? doc.data() : { status: "pending" };
     const status = supplierProfile.status || "pending";
 
-    if (routedStatus !== null && routedStatus !== status) { location.reload(); return; }
-    if (routedStatus !== null) return; // همان وضعیت قبلی؛ فقط اطلاعات پروفایل به‌روز شد
-    routedStatus = status;
-
-    if (status === "approved") {
-      panelSection.classList.remove("hidden");
-      welcomeName.textContent = user.displayName || supplierProfile.phone || "";
-      supplierCitySelect.value = supplierProfile.city || "";
-      minOrderInput.value = supplierProfile.minOrder || "";
-      deliveryFeeInput.value = supplierProfile.deliveryFee || "";
-      if (supplierProfile.lat != null) locationStatusEl.textContent = "موقعیت مکانی دقیق ثبت شده ✅";
-      listenCategories();
-      listenMyProducts();
-      listenOrders();
-      listenAcceptedOrders();
-      listenTrustedCustomers();
-      renderReport();
-      listenMessages();
-    } else if (status === "rejected") {
-      pendingSection.classList.remove("hidden");
-      pendingSection.querySelector("h1").textContent = "درخواست شما رد شد";
-      pendingSection.querySelector(".auth-sub").textContent = "متاسفانه درخواست همکاری شما تایید نشد. برای پیگیری پیام بفرستید.";
-      showPendingDiag(user, status);
-      listenPendingMessages();
-    } else {
-      pendingSection.classList.remove("hidden");
-      showPendingDiag(user, status);
-      listenPendingMessages();
-    }
+    if (status === "approved") showApprovedPanel(user);
+    else showPendingOrRejectedPanel(user, status);
+    lastRenderedStatus = status;
   }, err => {
     console.error(err);
     showToast("خطا در خواندن وضعیت حساب: " + (err.code || err.message));

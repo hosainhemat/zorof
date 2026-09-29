@@ -18,6 +18,8 @@ const APP_VERSION = "2026-09-27-a";
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
+// نشست ورود (مدیر/تامین‌کننده) صریحاً روی گوشی نگه داشته شود تا بی‌دلیل خارج نشوند
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((e) => console.error("auth persistence", e));
 
 // نمونه جداگانه مخصوص «مشتری» (نشست ناشناس)، تا نشست مشتری با نشست مدیر/تامین‌کننده
 // در یک مرورگر قاطی نشود. برای کار کردن، در Firebase → Authentication → Sign-in method
