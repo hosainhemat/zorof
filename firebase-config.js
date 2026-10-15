@@ -13,7 +13,7 @@ const firebaseConfig = {
 };
 
 // شماره نسخه برنامه — هر بار فایل‌ها را آپدیت می‌کنید عوض می‌شود تا بتوانید ببینید گوشی نسخه جدید را گرفته یا نه
-const APP_VERSION = "2026-09-27-a";
+const APP_VERSION = "2026-09-27-single-admin";
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();

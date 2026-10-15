@@ -308,6 +308,26 @@ body {
   padding: 40px 0;
 }
 
+/* ---- Store branding banner (logo + name at the very top) ---- */
+.store-banner {
+  text-align: center;
+  padding: 22px 20px 14px;
+  background: var(--bg);
+}
+.store-banner-logo {
+  max-width: 84px;
+  max-height: 84px;
+  border-radius: 16px;
+  object-fit: cover;
+  margin: 0 auto 10px;
+  display: block;
+}
+.store-banner-name {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
 /* ---- Header icons ---- */
 .icon-round {
   width: 38px;

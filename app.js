@@ -42,14 +42,36 @@ function distanceKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// -------------------- تم (رنگی / مشکی) --------------------
+// -------------------- تم (رنگی / مشکی) و نام/لوگوی فروشگاه --------------------
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme === "black" ? "dark" : "light");
 }
+function applyBranding(data) {
+  const name = (data && data.storeName) ? data.storeName.trim() : "";
+  const logoUrl = data && data.logoUrl;
+
+  document.querySelectorAll(".brand-name").forEach(el => { el.textContent = name || "ظرف من"; });
+  document.title = name || "ظرف من";
+
+  const banner = document.getElementById("storeBanner");
+  const bannerLogo = document.getElementById("storeBannerLogo");
+  const bannerName = document.getElementById("storeBannerName");
+  if (!banner) return;
+
+  if (logoUrl) { bannerLogo.src = logoUrl; bannerLogo.classList.remove("hidden"); }
+  else { bannerLogo.classList.add("hidden"); bannerLogo.removeAttribute("src"); }
+
+  if (name) { bannerName.textContent = name; bannerName.classList.remove("hidden"); }
+  else { bannerName.classList.add("hidden"); bannerName.textContent = ""; }
+
+  banner.classList.toggle("hidden", !logoUrl && !name);
+}
 let siteAdminUid = null;
 customerDb.collection("settings").doc("site").onSnapshot(doc => {
-  applyTheme(doc.exists ? (doc.data().theme || "color") : "color");
-  siteAdminUid = doc.exists ? (doc.data().adminUid || null) : null;
+  const data = doc.exists ? doc.data() : {};
+  applyTheme(data.theme || "color");
+  applyBranding(data);
+  siteAdminUid = data.adminUid || null;
 }, () => applyTheme("color"));
 
 // نشست ناشناس مشتری: فقط برای اینکه بتواند تاریخچه سفارش‌های همین دستگاه را ببیند
@@ -363,18 +385,20 @@ function checkTrustForCheckPayment() {
   row.classList.add("hidden");
   if (!verifiedPhone) return;
   customerDb.collection("trustedCustomers").doc(verifiedPhone).get().then(doc => {
-    if (doc.exists && (doc.data().trustedBy || []).length > 0) row.classList.remove("hidden");
+    if (doc.exists) row.classList.remove("hidden");
   }).catch(() => {});
 }
 
-// خرید اعتباری: فقط بررسی می‌کنیم که آیا حداقل یک تامین‌کننده اعتباری برای این
-// شماره ثبت کرده — سقف اعتبار هرگز به مشتری نشان داده نمی‌شود.
+// خرید اعتباری: فقط بررسی می‌کنیم آیا اعتبار باقیمانده‌ای دارد — عدد سقف/باقیمانده
+// هرگز به خود مشتری نمایش داده نمی‌شود، فقط برای تصمیم «نشان بده یا نه» استفاده می‌شود.
 function checkCreditEligibility() {
   const row = document.getElementById("payCreditRadioRow");
   row.classList.add("hidden");
   if (!verifiedPhone) return;
-  customerDb.collection("creditFlags").doc(verifiedPhone).get().then(doc => {
-    if (doc.exists && (doc.data().suppliers || []).length > 0) row.classList.remove("hidden");
+  customerDb.collection("creditAccounts").doc(verifiedPhone).get().then(doc => {
+    if (!doc.exists) return;
+    const d = doc.data();
+    if ((d.limit || 0) > (d.used || 0)) row.classList.remove("hidden");
   }).catch(() => {});
 }
 
@@ -422,27 +446,25 @@ async function uploadToCloudinary(file) {
 }
 
 // -------------------- ثبت سفارش نهایی --------------------
-async function buildSupplierQueue(payMethod) {
-  // خرید اعتباری فقط برای تامین‌کننده‌ای است که برای این شماره اعتبار تعریف کرده
-  if (payMethod === "credit") {
-    const flag = await customerDb.collection("creditFlags").doc(verifiedPhone).get();
-    return flag.exists ? (flag.data().suppliers || []) : [];
-  }
-  const queue = [];
+// فقط یک مدیر همه‌چیز را تامین می‌کند؛ اینجا فقط شناسه او را برمی‌گردانیم.
+async function resolveAdminUid() {
   let adminUid = siteAdminUid;
   if (!adminUid) {
     try { const st = await customerDb.collection("settings").doc("site").get(); adminUid = st.exists ? (st.data().adminUid || null) : null; } catch (e) {}
   }
-  if (adminUid) queue.push(adminUid);
-  const suppliersSnap = await customerDb.collection("suppliers").where("status", "==", "approved").get();
-  let others = suppliersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(s => s.uid !== adminUid);
-  if (buyerLocation) {
-    others = others.map(s => ({ ...s, _dist: (s.lat != null) ? distanceKm(buyerLocation.lat, buyerLocation.lng, s.lat, s.lng) : 1e9 })).sort((a, b) => a._dist - b._dist);
-  } else if (selectedCity) {
-    others = others.sort((a, b) => (a.city === selectedCity ? 0 : 1) - (b.city === selectedCity ? 0 : 1));
+  return adminUid;
+}
+
+async function buildSupplierQueue(payMethod) {
+  const adminUid = await resolveAdminUid();
+  if (!adminUid) return [];
+  if (payMethod === "credit") {
+    const acc = await customerDb.collection("creditAccounts").doc(verifiedPhone).get();
+    if (!acc.exists) return [];
+    const d = acc.data();
+    if ((d.limit || 0) <= (d.used || 0)) return [];
   }
-  others.forEach(s => queue.push(s.uid));
-  return queue;
+  return [adminUid];
 }
 
 document.getElementById("payBtn").onclick = async () => {

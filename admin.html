@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="supplier.css">
+<link rel="stylesheet" href="accounting.css">
 </head>
 <body>
 
@@ -31,31 +32,19 @@
     <button class="icon-btn" id="closeAdminSideMenu">✕</button>
   </div>
   <div class="side-category-list" id="adminMenuList">
-    <button class="side-cat-item accordion-head" data-tab="products">تایید محصولات <span class="accordion-arrow">‹</span></button>
-    <div class="accordion-body hidden">
-      <button class="side-cat-item sub" data-tab="products" data-status="pending">در انتظار تایید</button>
-      <button class="side-cat-item sub" data-tab="products" data-status="approved">تایید شده</button>
-      <button class="side-cat-item sub" data-tab="products" data-status="rejected">رد شده</button>
-    </div>
+    <button class="side-cat-item" data-tab="products">محصولات</button>
 
     <button class="side-cat-item" data-tab="categories">دسته‌بندی‌ها</button>
-
-    <button class="side-cat-item accordion-head" data-tab="suppliers">تامین‌کنندگان <span class="accordion-arrow">‹</span></button>
-    <div class="accordion-body hidden">
-      <button class="side-cat-item sub" data-tab="suppliers" data-status="pending">در انتظار تایید</button>
-      <button class="side-cat-item sub" data-tab="suppliers" data-status="approved">تایید شده</button>
-      <button class="side-cat-item sub" data-tab="suppliers" data-status="rejected">رد شده</button>
-    </div>
-
-    <button class="side-cat-item" data-tab="customers">مشتریان</button>
+<button class="side-cat-item" data-tab="customers">مشتریان</button>
+    <button class="side-cat-item" data-tab="trust">مشتریان معتبر (چک)</button>
     <button class="side-cat-item" data-tab="credit">خرید اعتباری</button>
     <button class="side-cat-item" data-tab="orders">سفارش‌ها</button>
     <button class="side-cat-item" data-tab="inventory">موجودی</button>
     <button class="side-cat-item" data-tab="report">گزارش</button>
-    <button class="side-cat-item" data-tab="messages">پیام‌رسانی</button>
 
     <button class="side-cat-item accordion-head" data-tab="settings">تنظیمات <span class="accordion-arrow">‹</span></button>
     <div class="accordion-body hidden">
+      <button class="side-cat-item sub" data-tab="settings" data-scroll="profile">پروفایل فروشگاه</button>
       <button class="side-cat-item sub" data-tab="settings" data-scroll="theme">ظاهر فروشگاه</button>
       <button class="side-cat-item sub" data-tab="settings" data-scroll="bank">شماره حساب</button>
       <button class="side-cat-item sub" data-tab="settings" data-scroll="csv">خروجی گزارش</button>
@@ -104,7 +93,27 @@
 
   <!-- تایید محصولات -->
   <div class="tab-pane" id="tab-products">
-    <nav class="filters" id="statusFilters"></nav>
+    <h2 class="section-title" id="productFormTitle">افزودن محصول جدید</h2>
+    <form id="productForm" class="product-form">
+      <div class="images-row" id="imagesRow"></div>
+      <button type="button" id="addImageBtn" class="dashed-btn">➕ افزودن عکس</button>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
+
+      <input id="pName" class="field" type="text" placeholder="عنوان جنس" required>
+      <input id="pPrice" class="field" type="number" inputmode="numeric" placeholder="قیمت (تومان)" required>
+      <input id="pStock" class="field" type="number" inputmode="numeric" placeholder="موجودی (تعداد)" required>
+      <select id="pCategory" class="field"></select>
+      <label class="checkbox-row"><input type="checkbox" id="pFeatured"> نمایش در «پیشنهاد شگفت‌انگیز»</label>
+
+      <div id="customFieldsRow"></div>
+      <button type="button" id="addFieldBtn" class="dashed-btn">➕ افزودن فیلد (مثل ابعاد، تعداد در بسته، توضیحات)</button>
+
+      <button type="submit" class="primary-btn" id="submitBtn">ذخیره محصول</button>
+      <button type="button" class="text-btn hidden" id="cancelEditBtn">انصراف از ویرایش</button>
+    </form>
+
+    <h2 class="section-title">محصولات فروشگاه</h2>
+    <input id="productSearch" class="field" type="text" placeholder="جستجوی محصول...">
     <div id="productsList" class="my-products"></div>
   </div>
 
@@ -119,20 +128,34 @@
   </div>
 
   <!-- تامین‌کنندگان -->
-  <div class="tab-pane hidden" id="tab-suppliers">
-    <nav class="filters" id="supplierStatusFilters"></nav>
-    <div id="suppliersList" class="my-products"></div>
-  </div>
-
-  <!-- مشتریان -->
+<!-- مشتریان -->
   <div class="tab-pane hidden" id="tab-customers">
     <input id="customerSearch" class="field" type="text" placeholder="جستجو با نام یا شماره...">
     <div id="customersList" class="my-products"></div>
   </div>
 
   <!-- خرید اعتباری -->
+  <div class="tab-pane hidden" id="tab-trust">
+    <h2 class="section-title">افزودن مشتری معتبر برای پرداخت چکی</h2>
+    <div class="product-form">
+      <p class="wizard-note">فقط مشتری‌هایی که شماره‌شان اینجا باشد، گزینه «پرداخت چکی» را در فروشگاه می‌بینند.</p>
+      <input id="trustPhoneInput" class="field" type="tel" placeholder="شماره موبایل مشتری">
+      <input id="trustNameInput" class="field" type="text" placeholder="نام (اختیاری)">
+      <button id="addTrustBtn" class="primary-btn">افزودن به لیست معتبر</button>
+    </div>
+    <h2 class="section-title">لیست مشتریان معتبر</h2>
+    <div id="trustListAdmin" class="my-products"></div>
+  </div>
+
   <div class="tab-pane hidden" id="tab-credit">
-    <h2 class="section-title">حساب‌های اعتباری (همه تامین‌کنندگان)</h2>
+    <h2 class="section-title">تعیین / ویرایش سقف اعتبار</h2>
+    <div class="product-form">
+      <p class="wizard-note">این سقف هیچ‌وقت به خود مشتری نشان داده نمی‌شود.</p>
+      <input id="creditPhoneInput" class="field" type="tel" placeholder="شماره موبایل مشتری">
+      <input id="creditLimitInput" class="field" type="number" inputmode="numeric" placeholder="سقف اعتبار (تومان)">
+      <button id="saveCreditLimitBtn" class="primary-btn">ذخیره سقف اعتبار</button>
+    </div>
+    <h2 class="section-title">حساب‌های اعتباری</h2>
     <div id="creditAccountsAdminList" class="my-products"></div>
     <h2 class="section-title">واریزی‌های در انتظار تایید</h2>
     <div id="creditSettlementsAdminList" class="my-products"></div>
@@ -152,19 +175,35 @@
   <div class="tab-pane hidden" id="tab-report">
     <div id="reportBox" class="report-box"></div>
   </div>
-
-  <!-- پیام‌رسانی -->
-  <div class="tab-pane hidden" id="tab-messages">
-    <select id="messageSupplierSelect" class="field"></select>
-    <div id="adminMessages" class="messages-thread"></div>
-    <div class="message-input-row">
-      <input id="adminMsgInput" class="field" type="text" placeholder="پیام...">
-      <button id="adminMsgSend" class="primary-btn small">ارسال</button>
-    </div>
-  </div>
-
-  <!-- تنظیمات -->
+<!-- تنظیمات -->
   <div class="tab-pane hidden" id="tab-settings">
+    <h2 class="section-title" id="settings-profile">پروفایل فروشگاه</h2>
+    <div class="product-form">
+      <p class="wizard-note">این موقعیت روی همه محصولات جدید می‌نشیند و فاصله تا مشتری را به او نشان می‌دهد.</p>
+      <select id="shopCitySelect" class="field"></select>
+      <button type="button" id="getShopLocationBtn" class="secondary-btn">دریافت موقعیت مکانی دقیق فروشگاه</button>
+      <p id="shopLocationStatus" class="location-status"></p>
+      <input id="shopMinOrder" class="field" type="number" inputmode="numeric" placeholder="حداقل مبلغ سفارش (تومان، اختیاری)">
+      <input id="shopDeliveryFee" class="field" type="number" inputmode="numeric" placeholder="هزینه ارسال (تومان، اختیاری)">
+      <button type="button" id="saveShopProfileBtn" class="primary-btn">ذخیره پروفایل فروشگاه</button>
+    </div>
+
+    <h2 class="section-title">نام و لوگوی فروشگاه</h2>
+    <div class="product-form">
+      <p class="wizard-note">هرچه اینجا بنویسید، به‌جای «ظرف من» بالای فروشگاه نمایش داده می‌شود.</p>
+      <input id="storeNameInput" class="field" type="text" placeholder="نام فروشگاه">
+      <button type="button" id="saveStoreNameBtn" class="secondary-btn">ذخیره نام</button>
+
+      <p class="wizard-note" style="margin-top:16px">لوگو (اختیاری) — هر فرمت عکسی؛ اگر نگذارید فقط نام نمایش داده می‌شود.</p>
+      <label class="photo-picker" id="logoPicker">
+        <img id="logoPreview" class="hidden">
+        <span id="logoPickerLabel">افزودن لوگو</span>
+        <input type="file" id="logoInput" accept="image/*">
+      </label>
+      <button type="button" id="saveLogoBtn" class="primary-btn">ذخیره لوگو</button>
+      <button type="button" id="removeLogoBtn" class="text-btn">حذف لوگوی فعلی</button>
+    </div>
+
     <h2 class="section-title" id="settings-theme">ظاهر فروشگاه</h2>
     <div class="product-form">
       <p class="wizard-note">تم فروشگاه را برای همه بازدیدکنندگان تغییر می‌دهد (مثلاً حالت مشکی برای ایام محرم).</p>
@@ -216,6 +255,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="jalali.js"></script>
+<script src="cities.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>

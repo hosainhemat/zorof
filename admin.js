@@ -11,13 +11,31 @@ const authError = document.getElementById("authError");
 const welcomeName = document.getElementById("welcomeName");
 const toastEl = document.getElementById("toast");
 
+const productForm = document.getElementById("productForm");
+const productFormTitle = document.getElementById("productFormTitle");
+const pName = document.getElementById("pName");
+const pPrice = document.getElementById("pPrice");
+const pStock = document.getElementById("pStock");
+const pCategory = document.getElementById("pCategory");
+const pFeatured = document.getElementById("pFeatured");
+const photoInput = document.getElementById("photoInput");
+const imagesRow = document.getElementById("imagesRow");
+const addImageBtn = document.getElementById("addImageBtn");
+const customFieldsRow = document.getElementById("customFieldsRow");
+const addFieldBtn = document.getElementById("addFieldBtn");
+const submitBtn = document.getElementById("submitBtn");
+const cancelEditBtn = document.getElementById("cancelEditBtn");
+
+let editingProductId = null;
+let productImages = []; // { type: 'existing', url } | { type: 'new', file, previewUrl }
+let productCategoriesCache = [];
+
 let currentUser = null;
 let isAdmin = false;
 let adminPendingCode = null;
 let activeProductStatus = "pending";
-let activeSupplierStatus = "pending";
 let unsubProducts = null;
-let unsubSuppliers = null;
+let allProductsCache = [];
 let unsubMessages = null;
 let allSuppliersCache = [];
 
@@ -28,6 +46,16 @@ function showToast(msg) {
   showToast._t = setTimeout(() => toastEl.classList.remove("show"), 1800);
 }
 function toman(n) { return Number(n).toLocaleString("fa-IR") + " تومان"; }
+
+function reportWriteError(action, err) {
+  console.error(action, err);
+  const code = err && err.code ? err.code : "";
+  if (code === "permission-denied") {
+    showToast("❌ ذخیره نشد: دسترسی رد شد. قوانین Firestore را دوباره Publish کنید و مطمئن شوید سند admins برای حساب شما وجود دارد.");
+  } else {
+    showToast("❌ خطا در " + action + (code ? " (" + code + ")" : ""));
+  }
+}
 
 document.getElementById("loginBtn").onclick = () => {
   authError.textContent = "";
@@ -62,15 +90,14 @@ function showAdminPanel() {
 
   renderProductStatusFilters();
   listenProducts();
+  listenProductCategories();
   listenCategoriesAdmin();
-  renderSupplierStatusFilters();
-  listenSuppliers();
   loadCustomers();
   loadCreditData();
   loadAllOrders();
-  loadInventory();
   loadReport();
-  setupMessaging();
+  loadShopProfile();
+  listenTrustedCustomers();
 }
 
 auth.onAuthStateChanged(async (user) => {
@@ -95,7 +122,7 @@ auth.onAuthStateChanged(async (user) => {
 
 // -------------------- منوی بخش‌ها (کشویی) --------------------
 const SECTION_TITLES = {
-  products: "تایید محصولات", categories: "دسته‌بندی‌ها", suppliers: "تامین‌کنندگان",
+  products: "محصولات", categories: "دسته‌بندی‌ها", suppliers: "تامین‌کنندگان",
   customers: "مشتریان", credit: "خرید اعتباری", orders: "سفارش‌ها", inventory: "موجودی",
   report: "گزارش", messages: "پیام‌رسانی", settings: "تنظیمات",
 };
@@ -150,139 +177,402 @@ document.querySelectorAll(".side-cat-item.sub").forEach(btn => {
   });
 });
 
-// ===================== تایید محصولات =====================
-function renderProductStatusFilters() {
-  const statuses = [{ key: "pending", label: "در انتظار تایید" }, { key: "approved", label: "تایید شده" }, { key: "rejected", label: "رد شده" }];
-  const el = document.getElementById("statusFilters");
-  el.innerHTML = "";
-  statuses.forEach(s => {
-    const btn = document.createElement("button");
-    btn.className = "chip" + (s.key === activeProductStatus ? " active" : "");
-    btn.textContent = s.label;
-    btn.onclick = () => { activeProductStatus = s.key; renderProductStatusFilters(); listenProducts(); };
-    el.appendChild(btn);
+// ===================== محصولات (افزودن / ویرایش / حذف) =====================
+
+// دسته‌بندی‌ها برای پر کردن select فرم محصول (زنده از Firestore)
+function listenProductCategories() {
+  db.collection("categories").orderBy("order", "asc").onSnapshot(snap => {
+    productCategoriesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const current = pCategory.value;
+    pCategory.innerHTML = "";
+    productCategoriesCache.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.name; opt.textContent = c.name;
+      pCategory.appendChild(opt);
+    });
+    if (current) pCategory.value = current;
   });
 }
 
-function listenProducts() {
-  if (unsubProducts) unsubProducts();
-  unsubProducts = db.collection("products").where("status", "==", activeProductStatus)
-    .onSnapshot(snap => renderProductsList(snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => ((b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : Date.now()) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : Date.now())))),
-      err => { console.error(err); document.getElementById("productsList").innerHTML = `<p class="my-empty">خطا در بارگذاری.</p>`; });
+// -------------------- تصاویر محصول (چندتایی) --------------------
+function renderImagesRow() {
+  imagesRow.innerHTML = "";
+  productImages.forEach((img, idx) => {
+    const slot = document.createElement("div");
+    slot.className = "image-slot";
+    const src = img.type === "existing" ? img.url : img.previewUrl;
+    slot.innerHTML = `<img src="${src}"><button type="button" class="remove-img">✕</button>`;
+    slot.querySelector(".remove-img").onclick = () => { productImages.splice(idx, 1); renderImagesRow(); };
+    imagesRow.appendChild(slot);
+  });
+}
+addImageBtn.onclick = () => photoInput.click();
+photoInput.onchange = () => {
+  const file = photoInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { productImages.push({ type: "new", file, previewUrl: e.target.result }); renderImagesRow(); };
+  reader.readAsDataURL(file);
+  photoInput.value = "";
+};
+
+// -------------------- فیلدهای دلخواه محصول --------------------
+function addFieldRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "field-row";
+  row.innerHTML = `
+    <input type="text" class="field field-label" placeholder="نام فیلد (مثلاً ابعاد)" value="${label || ""}">
+    <input type="text" class="field field-value" placeholder="مقدار" value="${value || ""}">
+    <button type="button" class="remove-field">✕</button>
+  `;
+  row.querySelector(".remove-field").onclick = () => row.remove();
+  customFieldsRow.appendChild(row);
+}
+addFieldBtn.onclick = () => addFieldRow("", "");
+
+function resetProductForm() {
+  productForm.reset();
+  productImages = []; renderImagesRow();
+  customFieldsRow.innerHTML = "";
+  editingProductId = null;
+  productFormTitle.textContent = "افزودن محصول جدید";
+  submitBtn.textContent = "ذخیره محصول";
+  cancelEditBtn.classList.add("hidden");
+}
+cancelEditBtn.onclick = resetProductForm;
+
+async function uploadToCloudinary(file) {
+  if (!CLOUDINARY_CLOUD_NAME || CLOUDINARY_CLOUD_NAME === "YOUR_CLOUD_NAME") throw new Error("Cloudinary تنظیم نشده است.");
+  const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(url, { method: "POST", body: formData });
+  if (!res.ok) throw new Error("آپلود عکس ناموفق بود");
+  return (await res.json()).secure_url;
 }
 
-function renderProductsList(items) {
+// -------------------- ثبت / ویرایش محصول --------------------
+productForm.onsubmit = async (e) => {
+  e.preventDefault();
+  const name = pName.value.trim();
+  const price = Number(pPrice.value);
+  const stock = Number(pStock.value);
+  const category = pCategory.value;
+  if (!name || !price) { showToast("عنوان و قیمت را کامل کنید"); return; }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "در حال ذخیره...";
+  try {
+    const newFiles = productImages.filter(i => i.type === "new");
+    const uploadedUrls = [];
+    for (const item of newFiles) uploadedUrls.push(await uploadToCloudinary(item.file));
+    let uploadIdx = 0;
+    const finalImages = productImages.map(i => i.type === "existing" ? i.url : uploadedUrls[uploadIdx++]);
+
+    const fields = Array.from(customFieldsRow.querySelectorAll(".field-row")).map(row => ({
+      label: row.querySelector(".field-label").value.trim(),
+      value: row.querySelector(".field-value").value.trim(),
+    })).filter(f => f.label || f.value);
+
+    const data = {
+      name, price, category, stock: isNaN(stock) ? 0 : stock,
+      images: finalImages, fields,
+      featured: !!pFeatured.checked,
+      status: "approved", // مدیر مستقیم می‌سازد، نیازی به تایید جداگانه نیست
+      supplierId: currentUser.uid,
+      supplierName: "فروشگاه",
+    };
+
+    // موقعیت فروشگاه (اگر در تنظیمات ثبت شده باشد) روی محصول هم می‌نشیند — برای نمایش فاصله به مشتری
+    try {
+      const siteDoc = await db.collection("settings").doc("site").get();
+      if (siteDoc.exists) {
+        const site = siteDoc.data();
+        if (site.shopLat != null) data.supplierLat = site.shopLat;
+        if (site.shopLng != null) data.supplierLng = site.shopLng;
+        if (site.shopCity) data.supplierCity = site.shopCity;
+      }
+    } catch (e) { /* بدون موقعیت هم مشکلی نیست */ }
+
+    if (editingProductId) {
+      await db.collection("products").doc(editingProductId).update(data);
+      showToast("محصول ویرایش شد");
+    } else {
+      data.available = true;
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("products").add(data);
+      showToast("محصول ثبت شد ✅");
+    }
+    resetProductForm();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || "خطا در ذخیره محصول");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = editingProductId ? "ذخیره تغییرات" : "ذخیره محصول";
+  }
+};
+
+// -------------------- لیست محصولات --------------------
+function listenProducts() {
+  if (unsubProducts) unsubProducts();
+  unsubProducts = db.collection("products").onSnapshot(snap => {
+    allProductsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => ((b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0)));
+    renderProductsList();
+    renderInventory(allProductsCache);
+  }, err => { console.error(err); document.getElementById("productsList").innerHTML = `<p class="my-empty">خطا در بارگذاری.</p>`; });
+}
+
+function statusBadge(status) {
+  const map = {
+    pending: { text: "در انتظار (قدیمی)", cls: "badge-pending" },
+    approved: { text: "تایید شده", cls: "badge-approved" },
+    rejected: { text: "رد شده (قدیمی)", cls: "badge-rejected" },
+  };
+  const s = map[status] || map.approved;
+  return `<span class="status-badge ${s.cls}">${s.text}</span>`;
+}
+
+function renderProductsList() {
   const el = document.getElementById("productsList");
-  if (items.length === 0) { el.innerHTML = `<p class="my-empty">موردی در این دسته نیست.</p>`; return; }
+  const q = (document.getElementById("productSearch").value || "").trim();
+  let items = allProductsCache;
+  if (q) items = items.filter(p => (p.name || "").includes(q));
+
+  if (items.length === 0) { el.innerHTML = `<p class="my-empty">هنوز محصولی ثبت نشده.</p>`; return; }
   el.innerHTML = "";
   items.forEach(p => {
+    const img0 = (p.images && p.images[0]) || p.imageUrl;
+    const thumb = img0 ? `<img src="${img0}" alt="">` : `<div class="ph">🍽️</div>`;
+    const available = p.available !== false;
+    const legacyNotApproved = p.status && p.status !== "approved";
+    const actions = [];
+    if (legacyNotApproved) actions.push(`<button data-act="approve">تایید</button>`);
+    actions.push(`<button data-act="edit">ویرایش</button>`);
+    actions.push(`<button data-act="toggle-avail">${available ? "اتمام موجودی" : "بازگرداندن"}</button>`);
+    actions.push(`<button data-act="delete">حذف</button>`);
     const row = document.createElement("div");
     row.className = "my-product";
-    const img0 = (p.images && p.images[0]) || p.imageUrl; const thumb = img0 ? `<img src="${img0}" alt="">` : `<div class="ph">🍽️</div>`;
-    const actions = [];
-    if (activeProductStatus !== "approved") actions.push(`<button data-act="approve">تایید</button>`);
-    if (activeProductStatus !== "rejected") actions.push(`<button data-act="reject">رد کردن</button>`);
-    actions.push(`<button data-act="delete">حذف</button>`);
     row.innerHTML = `
       ${thumb}
       <div class="my-product-info">
-        <div class="my-product-name">${p.name}</div>
-        <div class="my-product-price">${toman(p.price)}</div>
-        <div class="supplier-tag">تامین‌کننده: ${p.supplierName || "—"}</div>
+        <div class="my-product-name">${p.name}${p.featured ? " 🔥" : ""}</div>
+        <div class="my-product-price">${toman(p.price)} · موجودی: ${p.stock ?? 0}</div>
+        ${legacyNotApproved ? statusBadge(p.status) : ""}
+        ${!available ? `<span class="status-badge badge-rejected">اتمام موجودی در بازار</span>` : ""}
       </div>
       <div class="my-product-actions">${actions.join("")}</div>
     `;
-    const a = row.querySelector('[data-act="approve"]'); if (a) a.onclick = () => db.collection("products").doc(p.id).update({ status: "approved" }).then(() => showToast("تایید شد"));
-    const r = row.querySelector('[data-act="reject"]'); if (r) r.onclick = () => db.collection("products").doc(p.id).update({ status: "rejected" }).then(() => showToast("رد شد"));
-    row.querySelector('[data-act="delete"]').onclick = () => { if (confirm("حذف شود؟")) db.collection("products").doc(p.id).delete().then(() => showToast("حذف شد")); };
+    const approveBtn = row.querySelector('[data-act="approve"]');
+    if (approveBtn) approveBtn.onclick = () => db.collection("products").doc(p.id).update({ status: "approved" }).then(() => showToast("تایید شد"));
+    row.querySelector('[data-act="edit"]').onclick = () => startEditProduct(p);
+    row.querySelector('[data-act="toggle-avail"]').onclick = () => {
+      db.collection("products").doc(p.id).update({ available: !available })
+        .then(() => showToast(available ? "به‌عنوان اتمام موجودی علامت خورد" : "دوباره موجود شد"));
+    };
+    row.querySelector('[data-act="delete"]').onclick = () => deleteProduct(p.id, p.name);
     el.appendChild(row);
   });
 }
+document.getElementById("productSearch").oninput = renderProductsList;
+
+function startEditProduct(p) {
+  editingProductId = p.id;
+  pName.value = p.name || ""; pPrice.value = p.price || "";
+  pStock.value = p.stock ?? 0; pCategory.value = p.category || "";
+  pFeatured.checked = !!p.featured;
+  productImages = (p.images && p.images.length ? p.images : (p.imageUrl ? [p.imageUrl] : [])).map(url => ({ type: "existing", url }));
+  renderImagesRow();
+  customFieldsRow.innerHTML = "";
+  (p.fields || []).forEach(f => addFieldRow(f.label, f.value));
+  productFormTitle.textContent = "ویرایش محصول";
+  submitBtn.textContent = "ذخیره تغییرات";
+  cancelEditBtn.classList.remove("hidden");
+  selectTab("products");
+  productForm.scrollIntoView({ behavior: "smooth" });
+}
+
+function deleteProduct(id, name) {
+  if (!confirm(`آیا مطمئن هستید که می‌خواهید «${name}» را حذف کنید؟`)) return;
+  if (!confirm("این عمل قابل بازگشت نیست. حذف نهایی شود؟")) return;
+  db.collection("products").doc(id).delete()
+    .then(() => showToast("محصول حذف شد"))
+    .catch(err => reportWriteError("حذف محصول", err));
+}
 
 // ===================== تامین‌کنندگان =====================
-function renderSupplierStatusFilters() {
-  const statuses = [{ key: "pending", label: "در انتظار تایید" }, { key: "approved", label: "تایید شده" }, { key: "rejected", label: "رد شده" }];
-  const el = document.getElementById("supplierStatusFilters");
-  el.innerHTML = "";
-  statuses.forEach(s => {
-    const btn = document.createElement("button");
-    btn.className = "chip" + (s.key === activeSupplierStatus ? " active" : "");
-    btn.textContent = s.label;
-    btn.onclick = () => { activeSupplierStatus = s.key; renderSupplierStatusFilters(); renderSuppliersList(); };
-    el.appendChild(btn);
+
+// ===================== پروفایل فروشگاه (موقعیت، حداقل سفارش، هزینه ارسال) =====================
+if (typeof IRAN_CITIES !== "undefined") {
+  const sel = document.getElementById("shopCitySelect");
+  const ph = document.createElement("option"); ph.value = ""; ph.textContent = "شهر فروشگاه را انتخاب کنید";
+  sel.appendChild(ph);
+  IRAN_CITIES.forEach(city => {
+    const opt = document.createElement("option"); opt.value = city; opt.textContent = city;
+    sel.appendChild(opt);
   });
 }
 
-function listenSuppliers() {
-  if (unsubSuppliers) unsubSuppliers();
-  unsubSuppliers = db.collection("suppliers").onSnapshot(snap => {
-    allSuppliersCache = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-    renderSuppliersList();
-    populateMessageSupplierSelect();
-    loadReport();
+let shopProfile = {};
+function loadShopProfile() {
+  db.collection("settings").doc("site").get().then(doc => {
+    shopProfile = doc.exists ? doc.data() : {};
+    document.getElementById("shopCitySelect").value = shopProfile.shopCity || "";
+    document.getElementById("shopMinOrder").value = shopProfile.shopMinOrder || "";
+    document.getElementById("shopDeliveryFee").value = shopProfile.shopDeliveryFee || "";
+    if (shopProfile.shopLat != null) document.getElementById("shopLocationStatus").textContent = "موقعیت مکانی دقیق ثبت شده ✅";
+  });
+}
+
+document.getElementById("getShopLocationBtn").onclick = () => {
+  if (!navigator.geolocation) { showToast("مرورگر شما از موقعیت مکانی پشتیبانی نمی‌کند"); return; }
+  const btn = document.getElementById("getShopLocationBtn");
+  btn.textContent = "در حال دریافت موقعیت...";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      shopProfile.shopLat = pos.coords.latitude;
+      shopProfile.shopLng = pos.coords.longitude;
+      db.collection("settings").doc("site").set({ shopLat: shopProfile.shopLat, shopLng: shopProfile.shopLng }, { merge: true })
+        .then(() => { document.getElementById("shopLocationStatus").textContent = "موقعیت مکانی دقیق ثبت شده ✅"; showToast("موقعیت فروشگاه ثبت شد"); })
+        .catch(err => reportWriteError("ثبت موقعیت فروشگاه", err));
+      btn.textContent = "دریافت موقعیت مکانی دقیق فروشگاه";
+    },
+    () => { showToast("دسترسی به موقعیت مکانی رد شد"); btn.textContent = "دریافت موقعیت مکانی دقیق فروشگاه"; }
+  );
+};
+
+document.getElementById("saveShopProfileBtn").onclick = () => {
+  const data = {
+    shopCity: document.getElementById("shopCitySelect").value,
+    shopMinOrder: Number(document.getElementById("shopMinOrder").value) || null,
+    shopDeliveryFee: Number(document.getElementById("shopDeliveryFee").value) || null,
+  };
+  db.collection("settings").doc("site").set(data, { merge: true })
+    .then(() => showToast("پروفایل فروشگاه ذخیره شد ✅"))
+    .catch(err => reportWriteError("ذخیره پروفایل فروشگاه", err));
+};
+
+// ===================== نام و لوگوی فروشگاه =====================
+db.collection("settings").doc("site").get().then(doc => {
+  if (!doc.exists) return;
+  const data = doc.data();
+  if (data.storeName) document.getElementById("storeNameInput").value = data.storeName;
+  if (data.logoUrl) {
+    const preview = document.getElementById("logoPreview");
+    preview.src = data.logoUrl;
+    preview.classList.remove("hidden");
+    document.getElementById("logoPickerLabel").classList.add("hidden");
+  }
+}).catch(() => {});
+
+document.getElementById("saveStoreNameBtn").onclick = () => {
+  const name = document.getElementById("storeNameInput").value.trim();
+  db.collection("settings").doc("site").set({ storeName: name }, { merge: true })
+    .then(() => showToast("نام فروشگاه ذخیره شد ✅ — همین الان در فروشگاه عوض می‌شود"))
+    .catch(err => reportWriteError("ذخیره نام فروشگاه", err));
+};
+
+let selectedLogoFile = null;
+document.getElementById("logoInput").onchange = () => {
+  const file = document.getElementById("logoInput").files[0];
+  if (!file) return;
+  selectedLogoFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById("logoPreview");
+    preview.src = e.target.result;
+    preview.classList.remove("hidden");
+    document.getElementById("logoPickerLabel").classList.add("hidden");
+  };
+  reader.readAsDataURL(file);
+};
+
+document.getElementById("saveLogoBtn").onclick = async () => {
+  if (!selectedLogoFile) { showToast("اول یک عکس انتخاب کنید"); return; }
+  const btn = document.getElementById("saveLogoBtn");
+  btn.disabled = true; btn.textContent = "در حال آپلود...";
+  try {
+    const url = await uploadToCloudinary(selectedLogoFile);
+    await db.collection("settings").doc("site").set({ logoUrl: url }, { merge: true });
+    showToast("لوگو ذخیره شد ✅ — همین الان در فروشگاه عوض می‌شود");
+    selectedLogoFile = null;
+  } catch (err) {
+    reportWriteError("آپلود لوگو", err);
+  } finally {
+    btn.disabled = false; btn.textContent = "ذخیره لوگو";
+  }
+};
+
+document.getElementById("removeLogoBtn").onclick = () => {
+  if (!confirm("لوگوی فعلی حذف شود؟")) return;
+  db.collection("settings").doc("site").set({ logoUrl: null }, { merge: true })
+    .then(() => {
+      showToast("لوگو حذف شد");
+      document.getElementById("logoPreview").classList.add("hidden");
+      document.getElementById("logoPickerLabel").classList.remove("hidden");
+      selectedLogoFile = null;
+    })
+    .catch(err => reportWriteError("حذف لوگو", err));
+};
+
+// ===================== مشتریان معتبر برای پرداخت چکی =====================
+function listenTrustedCustomers() {
+  db.collection("trustedCustomers").onSnapshot(snap => {
+    renderTrustedList(snap.docs.map(d => ({ phone: d.id, ...d.data() })));
   }, err => console.error(err));
 }
 
-function reportWriteError(action, err) {
-  console.error(action, err);
-  const code = err && err.code ? err.code : "";
-  if (code === "permission-denied") {
-    showToast("❌ ذخیره نشد: دسترسی رد شد. قوانین Firestore را دوباره Publish کنید و مطمئن شوید سند admins برای حساب شما وجود دارد.");
-  } else {
-    showToast("❌ خطا در " + action + (code ? " (" + code + ")" : ""));
-  }
-}
-
-function setSupplierStatus(uid, status, okMsg) {
-  // بعد از نوشتن، مقدار را مستقیم از سرور می‌خوانیم تا مطمئن شویم واقعاً ذخیره شده
-  return db.collection("suppliers").doc(uid).update({ status })
-    .then(() => db.collection("suppliers").doc(uid).get({ source: "server" }))
-    .then(doc => {
-      if (doc.exists && doc.data().status === status) showToast(okMsg + " ✅ (روی سرور ذخیره شد)");
-      else showToast("⚠️ ذخیره شد ولی مقدار روی سرور با انتظار نمی‌خواند. صفحه را رفرش کنید.");
-    })
-    .catch(err => reportWriteError("تغییر وضعیت تامین‌کننده", err));
-}
-
-function renderSuppliersList() {
-  const el = document.getElementById("suppliersList");
-  const items = allSuppliersCache.filter(s => (s.status || "pending") === activeSupplierStatus);
-  if (items.length === 0) { el.innerHTML = `<p class="my-empty">موردی در این دسته نیست.</p>`; return; }
+function renderTrustedList(items) {
+  const el = document.getElementById("trustListAdmin");
+  if (items.length === 0) { el.innerHTML = `<p class="my-empty">هنوز مشتری معتبری اضافه نشده.</p>`; return; }
   el.innerHTML = "";
-
-  // شمارش شماره‌های تکراری (ممکن است یک نفر دو بار ثبت‌نام کرده باشد و شما یکی را تایید کرده باشید و او با دیگری وارد شود)
-  const phoneCount = {};
-  allSuppliersCache.forEach(x => { if (x.phone) phoneCount[x.phone] = (phoneCount[x.phone] || 0) + 1; });
-
-  items.forEach(s => {
+  items.forEach(c => {
     const row = document.createElement("div");
     row.className = "my-product";
-    const actions = [];
-    if (activeSupplierStatus !== "approved") actions.push(`<button data-act="approve">تایید</button>`);
-    if (activeSupplierStatus !== "rejected") actions.push(`<button data-act="reject">رد کردن</button>`);
-    actions.push(`<button data-act="delete">حذف</button>`);
-    const dup = s.phone && phoneCount[s.phone] > 1 ? `<div class="order-shortfall">⚠️ این شماره ${phoneCount[s.phone]} بار ثبت‌نام شده — مطمئن شوید همان حسابی را تایید می‌کنید که تامین‌کننده با آن وارد می‌شود</div>` : "";
     row.innerHTML = `
-      <div class="ph">🏪</div>
-      <div class="my-product-info">
-        <div class="my-product-name">${s.name || "—"}</div>
-        <div class="my-product-price">${s.city || "بدون شهر"}</div>
-        <a class="order-phone" href="tel:${s.phone || ""}">${s.phone || "بدون شماره"}</a>
-        <div class="supplier-tag">شناسه حساب: ${s.uid.slice(-6)} · وضعیت فعلی: ${s.status || "pending"}</div>
-        ${dup}
-      </div>
-      <div class="my-product-actions">${actions.join("")}</div>
+      <div class="ph">✅</div>
+      <div class="my-product-info"><div class="my-product-name">${c.name || "بدون نام"}</div><div class="my-product-price">${c.phone}</div></div>
+      <div class="my-product-actions"><button data-act="remove">حذف از لیست معتبر</button></div>
     `;
-    const a = row.querySelector('[data-act="approve"]'); if (a) a.onclick = () => setSupplierStatus(s.uid, "approved", "تامین‌کننده تایید شد");
-    const r = row.querySelector('[data-act="reject"]'); if (r) r.onclick = () => setSupplierStatus(s.uid, "rejected", "تامین‌کننده رد شد");
-    row.querySelector('[data-act="delete"]').onclick = () => {
-      if (!confirm("این تامین‌کننده حذف شود؟ (محصولاتش هم غیرفعال می‌شود)")) return;
-      db.collection("suppliers").doc(s.uid).delete().then(() => showToast("حذف شد")).catch(err => reportWriteError("حذف تامین‌کننده", err));
+    row.querySelector('[data-act="remove"]').onclick = () => {
+      if (!confirm("این مشتری از لیست معتبرهای پرداخت چکی حذف شود؟")) return;
+      db.collection("trustedCustomers").doc(c.phone).delete()
+        .then(() => showToast("حذف شد"))
+        .catch(err => reportWriteError("حذف مشتری معتبر", err));
     };
     el.appendChild(row);
   });
 }
+
+document.getElementById("addTrustBtn").onclick = () => {
+  const phone = document.getElementById("trustPhoneInput").value.trim();
+  if (!/^09\d{9}$/.test(phone)) { showToast("شماره موبایل معتبر (۱۱ رقم، شروع با ۰۹) وارد کنید"); return; }
+  const name = document.getElementById("trustNameInput").value.trim();
+  db.collection("trustedCustomers").doc(phone).set({
+    name: name || null, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true }).then(() => {
+    showToast("مشتری به لیست معتبر اضافه شد ✅");
+    document.getElementById("trustPhoneInput").value = "";
+    document.getElementById("trustNameInput").value = "";
+  }).catch(err => reportWriteError("افزودن مشتری معتبر", err));
+};
+
+// ===================== سقف اعتبار مشتریان =====================
+document.getElementById("saveCreditLimitBtn").onclick = () => {
+  const phone = document.getElementById("creditPhoneInput").value.trim();
+  if (!/^09\d{9}$/.test(phone)) { showToast("شماره موبایل معتبر (۱۱ رقم، شروع با ۰۹) وارد کنید"); return; }
+  const limit = Number(document.getElementById("creditLimitInput").value);
+  if (!limit || limit <= 0) { showToast("سقف اعتبار را وارد کنید"); return; }
+  db.collection("creditAccounts").doc(phone).set({
+    limit, used: firebase.firestore.FieldValue.increment(0), // اگر سند تازه است used از ۰ شروع می‌شود
+  }, { merge: true }).then(() => {
+    showToast("سقف اعتبار ذخیره شد ✅ (هیچ‌وقت به خود مشتری نشان داده نمی‌شود)");
+    document.getElementById("creditPhoneInput").value = "";
+    document.getElementById("creditLimitInput").value = "";
+  }).catch(err => reportWriteError("ذخیره سقف اعتبار", err));
+};
 
 // ===================== خرید اعتباری (نظارت کامل مدیر) =====================
 function loadCreditData() {
@@ -318,21 +608,48 @@ function renderCreditAccountsAdmin(items) {
   });
 }
 
+function approveCreditSettlementAdmin(orderId, amount, phone) {
+  const ref = db.collection("orders").doc(orderId);
+  const creditRef = db.collection("creditAccounts").doc(phone);
+  db.runTransaction(async (tx) => {
+    const creditDoc = await tx.get(creditRef);
+    const used = creditDoc.exists ? (creditDoc.data().used || 0) : 0;
+    tx.update(ref, { "creditSettlement.status": "approved" });
+    tx.set(creditRef, { used: Math.max(0, used - amount) }, { merge: true });
+  }).then(() => showToast("واریزی تایید و از بدهی مشتری کسر شد ✅"))
+    .catch(err => reportWriteError("تایید واریزی اعتباری", err));
+}
+function rejectCreditSettlementAdmin(orderId) {
+  const reason = prompt("دلیل رد واریزی (برای مشتری نمایش داده می‌شود):");
+  if (reason === null) return;
+  db.collection("orders").doc(orderId).update({
+    "creditSettlement.status": "rejected",
+    "creditSettlement.rejectionReason": reason.trim(),
+  }).then(() => showToast("واریزی رد شد"))
+    .catch(err => reportWriteError("رد واریزی اعتباری", err));
+}
+
 function renderCreditSettlementsAdmin(orders) {
   const el = document.getElementById("creditSettlementsAdminList");
   if (orders.length === 0) { el.innerHTML = `<p class="my-empty">واریزی‌ای ثبت نشده.</p>`; return; }
   el.innerHTML = "";
-  const statusLabel = { pending: "در انتظار بررسی تامین‌کننده", approved: "تایید و کسر شد", rejected: "رد شد" };
+  const statusLabel = { pending: "در انتظار بررسی شما", approved: "تایید و کسر شد", rejected: "رد شد" };
   orders.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)).forEach(o => {
     const s = o.creditSettlement;
     const photo = s.photoUrl ? `<a href="${s.photoUrl}" target="_blank">مشاهده عکس</a>` : "";
+    const actions = s.status === "pending"
+      ? `<button data-act="approve-settle" class="primary-action">تایید و کسر از بدهی</button><button data-act="reject-settle">رد کردن</button>`
+      : "";
     const row = document.createElement("div");
     row.className = "order-card";
     row.innerHTML = `
       <div class="order-head"><span class="status-badge badge-pending">${statusLabel[s.status] || s.status}</span></div>
-      <div class="order-items">مشتری: ${o.buyerPhone} · تامین‌کننده: ${supplierNameOf(o.assignedTo)} · مبلغ: ${toman(s.amount)} · روش: ${s.method === "check" ? "چک" : "فیش بانکی"}</div>
+      <div class="order-items">مشتری: ${o.buyerPhone} · مبلغ: ${toman(s.amount)} · روش: ${s.method === "check" ? "چک" : "فیش بانکی"}</div>
       <div class="order-meta">${photo} ${s.rejectionReason ? "· دلیل رد: " + s.rejectionReason : ""}</div>
+      <div class="order-actions">${actions}</div>
     `;
+    const appBtn = row.querySelector('[data-act="approve-settle"]'); if (appBtn) appBtn.onclick = () => approveCreditSettlementAdmin(o.id, s.amount, o.buyerPhone);
+    const rejBtn = row.querySelector('[data-act="reject-settle"]'); if (rejBtn) rejBtn.onclick = () => rejectCreditSettlementAdmin(o.id);
     el.appendChild(row);
   });
 }
@@ -477,8 +794,54 @@ function loadAllOrders() {
 }
 
 function supplierNameOf(uid) {
-  const s = allSuppliersCache.find(x => x.uid === uid);
-  return s ? s.name : (uid === (window._adminUid || "") ? "مدیر" : uid.slice(0, 6));
+  return "فروشگاه"; // از این پس فقط یک مدیر همه‌چیز را انجام می‌دهد
+}
+
+function approveOrderPayment(orderId) {
+  db.collection("orders").doc(orderId).update({ paymentStatus: "approved", paymentRejectionReason: null })
+    .then(() => showToast("پرداخت تایید شد ✅"))
+    .catch(err => reportWriteError("تایید پرداخت", err));
+}
+function rejectOrderPayment(orderId) {
+  const reason = prompt("دلیل رد پرداخت (برای مشتری نمایش داده می‌شود):");
+  if (reason === null) return;
+  if (!reason.trim()) { showToast("نوشتن دلیل الزامی است"); return; }
+  db.collection("orders").doc(orderId).update({ paymentStatus: "rejected", paymentRejectionReason: reason.trim() })
+    .then(() => showToast("پرداخت رد شد"))
+    .catch(err => reportWriteError("رد پرداخت", err));
+}
+function acceptOrderAdmin(orderId) {
+  const ref = db.collection("orders").doc(orderId);
+  db.runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    if (!doc.exists) throw new Error("سفارش پیدا نشد");
+    const data = doc.data();
+    if (data.status !== "pending" || data.assignedTo) throw new Error("این سفارش قبلاً پذیرفته شده");
+
+    if (data.paymentMethod === "credit") {
+      const creditRef = db.collection("creditAccounts").doc(data.buyerPhone);
+      const creditDoc = await tx.get(creditRef);
+      const limit = creditDoc.exists ? (creditDoc.data().limit || 0) : 0;
+      const used = creditDoc.exists ? (creditDoc.data().used || 0) : 0;
+      if (used + (data.total || 0) > limit) throw new Error("این سفارش از سقف اعتبار باقیمانده مشتری بیشتر است — یا سقفش را افزایش دهید، یا سفارش را رد کنید.");
+      tx.set(creditRef, { used: used + (data.total || 0) }, { merge: true });
+    }
+
+    tx.update(ref, { status: "assigned", assignedTo: currentUser.uid, assignedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  }).then(() => showToast("سفارش پذیرفته شد ✅"))
+    .catch(err => { console.error(err); showToast(err.message || "خطا در پذیرش سفارش"); });
+}
+function rejectOrderAdmin(orderId) {
+  const reason = prompt("دلیل رد سفارش (برای مشتری نمایش داده می‌شود):");
+  if (reason === null) return;
+  db.collection("orders").doc(orderId).update({ status: "rejected", paymentRejectionReason: reason.trim() || "امکان تامین این سفارش نیست" })
+    .then(() => showToast("سفارش رد شد"))
+    .catch(err => reportWriteError("رد سفارش", err));
+}
+function toggleSayadReceived(orderId, current) {
+  db.collection("orders").doc(orderId).update({ sayadReceived: !current })
+    .then(() => showToast(!current ? "صیادی: دریافت شد ✅" : "صیادی: برگشت به حالت دریافت‌نشده"))
+    .catch(err => reportWriteError("ثبت وضعیت صیادی", err));
 }
 
 function renderAllOrders(orders) {
@@ -488,32 +851,18 @@ function renderAllOrders(orders) {
   orders.forEach(o => {
     const row = document.createElement("div");
     row.className = "order-card";
-    const statusMap = { pending: "در جریان", assigned: "پذیرفته‌شده", unclaimed: "بدون پاسخ (نیاز به شما)" };
-    const queueText = (o.queue || []).map((uid, idx) => {
-      const rej = (o.rejections || {})[uid];
-      const accepted = o.assignedTo === uid;
-      let mark;
-      if (accepted) mark = "✅ پذیرفت";
-      else if (rej) mark = "❌ رد کرد";
-      else {
-        const allBeforeRejected = o.queue.slice(0, idx).every(u => (o.rejections || {})[u]);
-        mark = allBeforeRejected && !o.assignedTo ? "🔵 نوبت اوست (در انتظار پاسخ)" : "⏳ هنوز نوبتش نرسیده";
-      }
-      return `${supplierNameOf(uid)}: ${mark}`;
-    }).join(" | ");
-
-    let unclaimedBtn = "";
-    if (o.status === "unclaimed") unclaimedBtn = `<button data-act="claim" class="primary-action">تامین دستی توسط من</button>`;
+    const statusMap = { pending: "در انتظار بررسی", assigned: "پذیرفته‌شده و در حال آماده‌سازی", rejected: "رد شده" };
 
     // نمایش کامل روش پرداخت برای مدیر — چیزی پنهان نیست
-    const payStatusLabel = { pending_review: "در انتظار بررسی تامین‌کننده", approved: "تایید شده", rejected: "رد شده" };
+    const payStatusLabel = { pending_review: "در انتظار بررسی شما", approved: "تایید شده", rejected: "رد شده" };
     let paymentBox = "";
+    let paymentActions = "";
     if (o.paymentMethod) {
       const photoUrl = o.receiptImageUrl || o.checkImageUrl;
-      const methodLabel = o.paymentMethod === "check" ? "چک" : "واریز بانکی (فیش)";
+      const methodLabel = o.paymentMethod === "check" ? "چک" : o.paymentMethod === "credit" ? "خرید اعتباری" : "واریز بانکی (فیش)";
       let details = "";
       if (o.paymentMethod === "check") {
-        details = `بانک: ${o.checkBank || "—"} · سریال: ${o.checkSerial || "—"} · صیادی: ${o.checkSayad || "—"} · سررسید: ${toJalaliString ? toJalaliString(o.checkDueDate) : (o.checkDueDate || "—")} · مبلغ: ${toman(o.checkAmount)}`;
+        details = `بانک: ${o.checkBank || "—"} · سریال: ${o.checkSerial || "—"} · صیادی: ${o.checkSayad || "—"} · سررسید: ${typeof toJalaliString === "function" ? toJalaliString(o.checkDueDate) : (o.checkDueDate || "—")} · مبلغ: ${toman(o.checkAmount)}`;
       }
       const rejectLine = (o.paymentStatus === "rejected" && o.paymentRejectionReason)
         ? `<div class="order-shortfall">دلیل رد: ${o.paymentRejectionReason}</div>` : "";
@@ -523,36 +872,41 @@ function renderAllOrders(orders) {
         <div class="acc-row" style="margin-top:8px">
           <div class="acc-row-top"><span>روش پرداخت: ${methodLabel}</span><span>${payStatusLabel[o.paymentStatus] || o.paymentStatus}</span></div>
           ${details ? `<div class="order-meta">${details}</div>` : ""}
-          ${photoUrl ? `<img src="${photoUrl}" alt="مدرک پرداخت" style="max-width:120px;border-radius:8px;margin-top:6px">` : ""}
+          ${photoUrl ? `<a href="${photoUrl}" target="_blank"><img src="${photoUrl}" alt="مدرک پرداخت" style="max-width:120px;border-radius:8px;margin-top:6px"></a>` : ""}
           ${rejectLine}${sayadLine}
         </div>`;
+
+      if (o.paymentStatus === "pending_review") {
+        paymentActions += `<button data-act="approve-pay" class="primary-action">تایید پرداخت</button><button data-act="reject-pay">رد پرداخت</button>`;
+      }
+      if (o.paymentMethod === "check" && o.paymentStatus === "approved") {
+        paymentActions += `<button data-act="toggle-sayad">${o.sayadReceived ? "برگرداندن به دریافت‌نشده" : "صیادی دریافت شد"}</button>`;
+      }
     }
+
+    let orderActions = "";
+    const canAccept = o.status === "pending" && (!o.paymentMethod || o.paymentStatus === "approved");
+    if (canAccept) orderActions += `<button data-act="accept" class="primary-action">قبول سفارش</button><button data-act="reject-order">رد سفارش</button>`;
+    if (o.status === "rejected" && o.paymentRejectionReason) orderActions += `<div class="order-shortfall">دلیل: ${o.paymentRejectionReason}</div>`;
 
     row.innerHTML = `
       <div class="order-head"><span class="status-badge badge-pending">${statusMap[o.status] || o.status}</span></div>
       <div class="order-items">${(o.items || []).map(it => `${it.name} × ${it.qty}`).join("، ")}</div>
       <div class="order-total">${toman(o.total)}</div>
       <div class="order-meta">خریدار: ${o.buyerPhone} · ${o.buyerAddress || o.buyerCity || ""}</div>
-      <div class="order-meta">${queueText}</div>
       ${paymentBox}
-      <div class="order-actions">${unclaimedBtn}</div>
+      <div class="order-actions">${paymentActions}${orderActions}</div>
     `;
-    const claimBtn = row.querySelector('[data-act="claim"]');
-    if (claimBtn) claimBtn.onclick = () => {
-      db.collection("orders").doc(o.id).update({ status: "assigned", assignedTo: currentUser.uid })
-        .then(() => showToast("سفارش به شما اختصاص یافت"));
-    };
+    const approvePayBtn = row.querySelector('[data-act="approve-pay"]'); if (approvePayBtn) approvePayBtn.onclick = () => approveOrderPayment(o.id);
+    const rejectPayBtn = row.querySelector('[data-act="reject-pay"]'); if (rejectPayBtn) rejectPayBtn.onclick = () => rejectOrderPayment(o.id);
+    const sayadBtn = row.querySelector('[data-act="toggle-sayad"]'); if (sayadBtn) sayadBtn.onclick = () => toggleSayadReceived(o.id, !!o.sayadReceived);
+    const acceptBtn = row.querySelector('[data-act="accept"]'); if (acceptBtn) acceptBtn.onclick = () => acceptOrderAdmin(o.id);
+    const rejectOrderBtn = row.querySelector('[data-act="reject-order"]'); if (rejectOrderBtn) rejectOrderBtn.onclick = () => rejectOrderAdmin(o.id);
     el.appendChild(row);
   });
 }
 
 // ===================== موجودی =====================
-function loadInventory() {
-  db.collection("products").onSnapshot(snap => {
-    renderInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, err => console.error(err));
-}
-
 function renderInventory(items) {
   const el = document.getElementById("inventoryList");
   if (items.length === 0) { el.innerHTML = `<p class="my-empty">محصولی ثبت نشده.</p>`; return; }
@@ -588,76 +942,16 @@ async function loadReport() {
   const ordersSnap = await db.collection("orders").get();
   const orders = ordersSnap.docs.map(d => d.data());
 
-  const perSupplier = {};
-  allSuppliersCache.forEach(s => { perSupplier[s.uid] = { name: s.name, accepted: 0, rejected: 0, revenue: 0 }; });
+  const accepted = orders.filter(o => o.assignedTo);
+  const rejected = orders.filter(o => o.status === "rejected");
+  const totalRevenue = accepted.reduce((s, o) => s + (o.total || 0), 0);
 
-  orders.forEach(o => {
-    if (o.assignedTo) {
-      if (!perSupplier[o.assignedTo]) perSupplier[o.assignedTo] = { name: supplierNameOf(o.assignedTo), accepted: 0, rejected: 0, revenue: 0 };
-      perSupplier[o.assignedTo].accepted++;
-      perSupplier[o.assignedTo].revenue += (o.total || 0);
-    }
-    Object.keys(o.rejections || {}).forEach(uid => {
-      if (!perSupplier[uid]) perSupplier[uid] = { name: supplierNameOf(uid), accepted: 0, rejected: 0, revenue: 0 };
-      perSupplier[uid].rejected++;
-    });
-  });
-
-  const totalRevenue = orders.reduce((s, o) => s + (o.assignedTo ? (o.total || 0) : 0), 0);
-  let html = `<div class="report-item"><span>کل درآمد فروشگاه</span><b>${toman(totalRevenue)}</b></div>`;
-  html += `<div class="report-item"><span>کل سفارش‌ها</span><b>${orders.length}</b></div>`;
-  Object.values(perSupplier).forEach(s => {
-    html += `<div class="report-item"><span>${s.name || "—"}</span><b>${s.accepted} قبول · ${s.rejected} رد · ${toman(s.revenue)}</b></div>`;
-  });
-  el.innerHTML = html;
-}
-
-// ===================== پیام‌رسانی =====================
-function populateMessageSupplierSelect() {
-  const select = document.getElementById("messageSupplierSelect");
-  const current = select.value;
-  select.innerHTML = "";
-  allSuppliersCache.forEach(s => {
-    const opt = document.createElement("option");
-    opt.value = s.uid; opt.textContent = s.name || s.uid;
-    select.appendChild(opt);
-  });
-  if (current) select.value = current;
-  else if (allSuppliersCache.length > 0) openMessageThread(select.value);
-}
-
-function setupMessaging() {
-  const select = document.getElementById("messageSupplierSelect");
-  select.onchange = () => openMessageThread(select.value);
-  document.getElementById("adminMsgSend").onclick = () => {
-    const input = document.getElementById("adminMsgInput");
-    const supplierId = select.value;
-    if (!supplierId || !input.value.trim()) return;
-    db.collection("messages").add({
-      supplierId, sender: "admin", text: input.value.trim(),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    input.value = "";
-  };
-}
-
-function openMessageThread(supplierId) {
-  if (unsubMessages) unsubMessages();
-  if (!supplierId) return;
-  unsubMessages = db.collection("messages").where("supplierId", "==", supplierId)
-    .onSnapshot(snap => {
-      const container = document.getElementById("adminMessages");
-      container.innerHTML = "";
-      const sortedDocs = snap.docs.slice().sort((a, b) => ((a.data().createdAt && a.data().createdAt.toMillis ? a.data().createdAt.toMillis() : Date.now()) - (b.data().createdAt && b.data().createdAt.toMillis ? b.data().createdAt.toMillis() : Date.now())));
-      sortedDocs.forEach(d => {
-        const m = d.data();
-        const bubble = document.createElement("div");
-        bubble.className = "msg-bubble " + (m.sender === "admin" ? "me" : "them");
-        bubble.textContent = m.text;
-        container.appendChild(bubble);
-      });
-      container.scrollTop = container.scrollHeight;
-    });
+  el.innerHTML = `
+    <div class="report-item"><span>کل درآمد فروشگاه</span><b>${toman(totalRevenue)}</b></div>
+    <div class="report-item"><span>کل سفارش‌ها</span><b>${orders.length}</b></div>
+    <div class="report-item"><span>سفارش‌های پذیرفته‌شده</span><b>${accepted.length}</b></div>
+    <div class="report-item"><span>سفارش‌های رد‌شده</span><b>${rejected.length}</b></div>
+  `;
 }
 
 // ===================== دسته‌بندی‌ها =====================
